@@ -1,0 +1,20 @@
+domain: k8s.evertrust.io
+layout:
+- go.kubebuilder.io/v3
+projectName: horizon-cm
+repo: gitlab.com/evertrust/horizon-cm
+resources:
+- group: batch
+  kind: CronJob
+  path: k8s.io/api/batch/v1
+  version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8s.evertrust.io
+  group: batch
+  kind: CronJob
+  path: gitlab.com/evertrust/horizon-cm/api/v1
+  version: v1
+version: "3"
