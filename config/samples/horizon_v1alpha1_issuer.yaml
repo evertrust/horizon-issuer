@@ -4,5 +4,6 @@ metadata:
   name: issuer-sample
 spec:
   authSecretName: "issuer-sample-credentials"
-  url: "https://sample-issuer.example.com/api/v1"
+  url: "https://horizon-qa.evertrust.io"
+  profile: "IssuerProfile"
 

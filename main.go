@@ -21,7 +21,8 @@ import (
 	"flag"
 	"fmt"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
-	"gitlab.com/evertrust/horizon-go"
+	controllers2 "gitlab.com/evertrust/horizon-cm/internal/controllers"
+	"gitlab.com/evertrust/horizon-cm/internal/issuer"
 	"io/ioutil"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"os"
@@ -37,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	horizonv1alpha1 "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
-	"gitlab.com/evertrust/horizon-cm/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -102,7 +102,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.IssuerReconciler{
+	if err = (&controllers2.IssuerReconciler{
 		Kind:   "Issuer",
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -111,12 +111,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.CertificateRequestReconciler{
+	if err = (&controllers2.CertificateRequestReconciler{
 		Client:                   mgr.GetClient(),
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
 		Clock:                    clock.RealClock{},
-		HorizonClient:            horizon.Horizon{},
+		Issuer:                   issuer.HorizonIssuer{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CertificateRequest")
 		os.Exit(1)

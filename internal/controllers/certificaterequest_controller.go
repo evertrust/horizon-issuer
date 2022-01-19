@@ -23,7 +23,9 @@ import (
 	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
-	"gitlab.com/evertrust/horizon-go/requests"
+	issuerapi "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
+	horizonissuer "gitlab.com/evertrust/horizon-cm/internal/issuer"
+	issuerutil "gitlab.com/evertrust/horizon-cm/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,11 +35,7 @@ import (
 	"net/url"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
-
-	issuerapi "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
-	issuerutil "gitlab.com/evertrust/horizon-cm/controllers/util"
-	"gitlab.com/evertrust/horizon-go"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 var (
@@ -50,19 +48,18 @@ var (
 	errUnknownHorizon = errors.New("horizon returned an error")
 )
 
-var requestIdAnnotation = "horizon.evertrust.io/request-id"
-
 // CertificateRequestReconciler reconciles a CertificateRequest object
 type CertificateRequestReconciler struct {
 	client.Client
 	Scheme                   *runtime.Scheme
 	ClusterResourceNamespace string
 	Clock                    clock.Clock
-	HorizonClient            horizon.Horizon
+	Issuer                   horizonissuer.HorizonIssuer
 }
 
 // +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
@@ -84,33 +81,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, nil
 	}
 
-	// Ignore CertificateRequest if it is already Ready
-	if cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
-		Type:   cmapi.CertificateRequestConditionReady,
-		Status: cmmeta.ConditionTrue,
-	}) {
-		log.Info("CertificateRequest is Ready. Ignoring.")
-		return ctrl.Result{}, nil
-	}
-	// Ignore CertificateRequest if it is already Failed
-	if cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
-		Type:   cmapi.CertificateRequestConditionReady,
-		Status: cmmeta.ConditionFalse,
-		Reason: cmapi.CertificateRequestReasonFailed,
-	}) {
-		log.Info("CertificateRequest is Failed. Ignoring.")
-		return ctrl.Result{}, nil
-	}
-	// Ignore CertificateRequest if it already has a Denied Ready Reason
-	if cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
-		Type:   cmapi.CertificateRequestConditionReady,
-		Status: cmmeta.ConditionFalse,
-		Reason: cmapi.CertificateRequestReasonDenied,
-	}) {
-		log.Info("CertificateRequest already has a Ready condition with Denied Reason. Ignoring.")
-		return ctrl.Result{}, nil
-	}
-
 	// We now have a CertificateRequest that belongs to us so we are responsible
 	// for updating its Ready condition.
 	setReadyCondition := func(status cmmeta.ConditionStatus, reason, message string) {
@@ -121,32 +91,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			reason,
 			message,
 		)
-	}
-
-	// Always attempt to update the Ready condition
-	defer func() {
-		if err != nil {
-			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
-		}
-		if updateErr := r.Status().Update(ctx, &certificateRequest); updateErr != nil {
-			err = utilerrors.NewAggregate([]error{err, updateErr})
-			result = ctrl.Result{}
-		}
-	}()
-
-	// If CertificateRequest has been denied, mark the CertificateRequest as
-	// Ready=Denied and set FailureTime if not already.
-	if cmutil.CertificateRequestIsDenied(&certificateRequest) {
-		log.Info("CertificateRequest has been denied yet. Marking as failed.")
-
-		if certificateRequest.Status.FailureTime == nil {
-			nowTime := metav1.NewTime(r.Clock.Now())
-			certificateRequest.Status.FailureTime = &nowTime
-		}
-
-		message := "The CertificateRequest was denied by an approval controller"
-		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonDenied, message)
-		return ctrl.Result{}, nil
 	}
 
 	// Ignore but log an error if the issuerRef.Kind is unrecognised
@@ -213,93 +157,106 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errInvalidBaseUrl, err)
 	}
 
-	r.HorizonClient.Init(*baseUrl, string(secret.Data["username"]), string(secret.Data["password"]))
+	r.Issuer.Client.Init(*baseUrl, string(secret.Data["username"]), string(secret.Data["password"]))
+
+	finalizerName := horizonissuer.IssuerNamespace + "/finalizer"
+
+	// examine DeletionTimestamp to determine if object is under deletion
+	if certificateRequest.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// registering our finalizer.
+		if !controllerutil.ContainsFinalizer(&certificateRequest, finalizerName) {
+			controllerutil.AddFinalizer(&certificateRequest, finalizerName)
+			if err := r.Update(ctx, &certificateRequest); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if controllerutil.ContainsFinalizer(&certificateRequest, finalizerName) {
+			// our finalizer is present, so lets handle any external dependency
+			if err := r.Issuer.RevokeCertificate(ctx, &certificateRequest); err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried
+				return ctrl.Result{}, err
+			}
+
+			// remove our finalizer from the list and update it.
+			controllerutil.RemoveFinalizer(&certificateRequest, finalizerName)
+			if err := r.Update(ctx, &certificateRequest); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, nil
+	}
+
+	// Ignore CertificateRequest if it is already Ready
+	if cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
+		Type:   cmapi.CertificateRequestConditionReady,
+		Status: cmmeta.ConditionTrue,
+	}) {
+		log.Info("CertificateRequest is Ready. Ignoring.")
+		return ctrl.Result{}, nil
+	}
+	// Ignore CertificateRequest if it is already Failed
+	if cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
+		Type:   cmapi.CertificateRequestConditionReady,
+		Status: cmmeta.ConditionFalse,
+		Reason: cmapi.CertificateRequestReasonFailed,
+	}) {
+		log.Info("CertificateRequest is Failed. Ignoring.")
+		return ctrl.Result{}, nil
+	}
+	// Ignore CertificateRequest if it already has a Denied Ready Reason
+	if cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
+		Type:   cmapi.CertificateRequestConditionReady,
+		Status: cmmeta.ConditionFalse,
+		Reason: cmapi.CertificateRequestReasonDenied,
+	}) {
+		log.Info("CertificateRequest already has a Ready condition with Denied Reason. Ignoring.")
+		return ctrl.Result{}, nil
+	}
+
+	// Always attempt to update the Ready condition
+	defer func() {
+		if err != nil {
+			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+		}
+		if updateErr := r.Status().Update(ctx, &certificateRequest); updateErr != nil {
+			err = utilerrors.NewAggregate([]error{err, updateErr})
+			result = ctrl.Result{}
+		}
+	}()
+
+	// If CertificateRequest has been denied, mark the CertificateRequest as
+	// Ready=Denied and set FailureTime if not already.
+	if cmutil.CertificateRequestIsDenied(&certificateRequest) {
+		log.Info("CertificateRequest has been denied yet. Marking as failed.")
+
+		if certificateRequest.Status.FailureTime == nil {
+			nowTime := metav1.NewTime(r.Clock.Now())
+			certificateRequest.Status.FailureTime = &nowTime
+		}
+
+		message := "The CertificateRequest was denied by an approval controller"
+		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonDenied, message)
+		return ctrl.Result{}, nil
+	}
 
 	// If CertificateRequest has not been approved, we should submit the request.
 	if !cmutil.CertificateRequestIsApproved(&certificateRequest) {
 		// If the request has been submitted to Horizon, pull info from Horizon
-		if requestId, ok := certificateRequest.Annotations[requestIdAnnotation]; ok {
-			log.Info("Pulling request " + requestId)
-			request, err := r.HorizonClient.Requests.Get(requestId)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("%w: %v", errUnknownHorizon, err)
-			}
-			if request.Status == "completed" {
-				cmutil.SetCertificateRequestCondition(
-					&certificateRequest,
-					cmapi.CertificateRequestConditionApproved,
-					cmmeta.ConditionTrue,
-					"horizon.evertrust.io",
-					"Request approved on Horizon",
-				)
-				certificateRequest.Status.Certificate = []byte(request.Certificate.Certificate)
-				setReadyCondition(cmmeta.ConditionTrue, cmapi.CertificateRequestReasonIssued, "Signed")
-				return ctrl.Result{}, nil
-			}
-
-			return ctrl.Result{
-				Requeue:      true,
-				RequeueAfter: time.Minute,
-			}, nil
+		if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
+			return r.Issuer.UpdateRequest(ctx, &certificateRequest)
 		} else {
-			// Else, submit the request
-			request, err := r.HorizonClient.Requests.DecentralizedEnroll(
-				issuerSpec.Profile,
-				certificateRequest.Spec.Request,
-				[]requests.LabelElement{},
-			)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("%w: %v", errUnknownHorizon, err)
-			}
-
-			// Update the request with the Horizon request ID
-			certificateRequest.Annotations[requestIdAnnotation] = request.Id
-			if err := r.Update(ctx, &certificateRequest); err != nil {
-				return ctrl.Result{}, fmt.Errorf("%w, secret name: %s, reason: %v", errGetAuthSecret, secretName, err)
-			}
-			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, "Submitted request to Horizon")
-
-			return ctrl.Result{
-				Requeue:      true,
-				RequeueAfter: time.Minute,
-			}, nil
+			return r.Issuer.SubmitRequest(ctx, r.Client, issuerSpec.Profile, &certificateRequest)
 		}
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *CertificateRequestReconciler) updateCertificateRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	request, err := r.HorizonClient.Requests.Get(certificateRequest.Annotations[requestIdAnnotation])
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w: %v", errUnknownHorizon, err)
-	}
-
-	// todo: finish this
-	if request.Status == "completed" {
-		cmutil.SetCertificateRequestCondition(
-			certificateRequest,
-			cmapi.CertificateRequestConditionApproved,
-			cmmeta.ConditionTrue,
-			"horizon.evertrust.io",
-			"Request approved on Horizon",
-		)
-		certificateRequest.Status.Certificate = []byte(request.Certificate.Certificate)
-
-		cmutil.SetCertificateRequestCondition(
-			certificateRequest,
-			cmapi.CertificateRequestConditionReady,
-			cmmeta.ConditionTrue,
-			cmapi.CertificateRequestReasonIssued,
-			"Signed",
-		)
-		return ctrl.Result{}, nil
-	}
-
-	return ctrl.Result{
-		Requeue:      true,
-		RequeueAfter: time.Minute,
-	}, nil
 }
 
 func (r *CertificateRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {

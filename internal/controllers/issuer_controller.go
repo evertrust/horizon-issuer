@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	issuerutil "gitlab.com/evertrust/horizon-cm/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"time"
@@ -30,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	horizonv1alpha1 "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
-	issuerutil "gitlab.com/evertrust/horizon-cm/controllers/util"
 )
 
 const (

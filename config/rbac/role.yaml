@@ -25,6 +25,12 @@ rules:
 - apiGroups:
   - cert-manager.io
   resources:
+  - certificaterequests/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - cert-manager.io
+  resources:
   - certificaterequests/status
   verbs:
   - get

@@ -1,10 +1,10 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: certificate-by-issuer3
+  name: evertrust-test-cert
 spec:
-  commonName: hello2.example.org
-  secretName: issuer-sample-credentials
+  commonName: test.evertrust.fr
+  secretName: evertrust-test-cert
   issuerRef:
     name: issuer-sample
     group: horizon.k8s.evertrust.io
