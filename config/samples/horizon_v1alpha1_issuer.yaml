@@ -1,0 +1,8 @@
+apiVersion: horizon.k8s.evertrust.io/v1alpha1
+kind: Issuer
+metadata:
+  name: issuer-sample
+spec:
+  authSecretName: "issuer-sample-credentials"
+  url: "https://sample-issuer.example.com/api/v1"
+
