@@ -47,8 +47,9 @@ var (
 // IssuerReconciler reconciles a Issuer object
 type IssuerReconciler struct {
 	client.Client
-	Kind   string
-	Scheme *runtime.Scheme
+	Kind                     string
+	Scheme                   *runtime.Scheme
+	ClusterResourceNamespace string
 }
 
 // +kubebuilder:rbac:groups=horizon.k8s.evertrust.io,resources=issuers;clusterissuers,verbs=get;list;watch
@@ -109,8 +110,8 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	switch issuer.(type) {
 	case *horizonv1alpha1.Issuer:
 		secretName.Namespace = req.Namespace
-	//case *horizonv1alpha1.ClusterIssuer:
-	//	secretName.Namespace = r.ClusterResourceNamespace
+	case *horizonv1alpha1.ClusterIssuer:
+		secretName.Namespace = r.ClusterResourceNamespace
 	default:
 		log.Error(fmt.Errorf("unexpected issuer type: %t", issuer), "Not retrying.")
 		return ctrl.Result{}, nil
@@ -136,7 +137,11 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *IssuerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	issuerType, err := r.newIssuer()
+	if err != nil {
+		return err
+	}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&horizonv1alpha1.Issuer{}).
+		For(issuerType).
 		Complete(r)
 }

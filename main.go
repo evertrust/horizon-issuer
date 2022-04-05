@@ -21,8 +21,9 @@ import (
 	"flag"
 	"fmt"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
-	controllers2 "gitlab.com/evertrust/horizon-cm/internal/controllers"
+	"gitlab.com/evertrust/horizon-cm/internal/controllers"
 	"gitlab.com/evertrust/horizon-cm/internal/issuer"
+	"gitlab.com/evertrust/horizon-cm/internal/version"
 	"io/ioutil"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"os"
@@ -62,17 +63,24 @@ func main() {
 	var enableLeaderElection bool
 	var clusterResourceNamespace string
 	var probeAddr string
+	var printVersion bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "", "The namespace for secrets in which cluster-scoped resources are found.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&printVersion, "version", false, "Print version to stdout and exit")
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if printVersion {
+		fmt.Println(version.Version)
+		return
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -89,6 +97,14 @@ func main() {
 		}
 	}
 
+	setupLog.Info(
+		"starting",
+		"version", version.Version,
+		"enable-leader-election", enableLeaderElection,
+		"metrics-addr", metricsAddr,
+		"cluster-resource-namespace", clusterResourceNamespace,
+	)
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
@@ -102,16 +118,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers2.IssuerReconciler{
-		Kind:   "Issuer",
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+	if err = (&controllers.IssuerReconciler{
+		Kind:                     "Issuer",
+		Client:                   mgr.GetClient(),
+		Scheme:                   mgr.GetScheme(),
+		ClusterResourceNamespace: clusterResourceNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Issuer")
 		os.Exit(1)
 	}
 
-	if err = (&controllers2.CertificateRequestReconciler{
+	if err = (&controllers.IssuerReconciler{
+		Kind:                     "ClusterIssuer",
+		Client:                   mgr.GetClient(),
+		Scheme:                   mgr.GetScheme(),
+		ClusterResourceNamespace: clusterResourceNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterIssuer")
+		os.Exit(1)
+	}
+
+	if err = (&controllers.CertificateRequestReconciler{
 		Client:                   mgr.GetClient(),
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,

@@ -34,6 +34,10 @@ type IssuerSpec struct {
 	// is set as a flag on the controller component (and defaults to the
 	// namespace that the controller runs in).
 	AuthSecretName string `json:"authSecretName"`
+
+	// An optional string containing the CA bundle required to
+	// trust the Horizon endpoint certificate
+	CaBundle *string `json:"caBundle,omitempty"`
 }
 
 // IssuerStatus defines the observed state of Issuer

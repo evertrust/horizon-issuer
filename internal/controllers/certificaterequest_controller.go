@@ -113,9 +113,9 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		issuerName.Namespace = certificateRequest.Namespace
 		secretNamespace = certificateRequest.Namespace
 		log = log.WithValues("issuer", issuerName)
-	//case *issuerapi.ClusterIssuer:
-	//	secretNamespace = r.ClusterResourceNamespace
-	//	log = log.WithValues("clusterissuer", issuerName)
+	case *issuerapi.ClusterIssuer:
+		secretNamespace = r.ClusterResourceNamespace
+		log = log.WithValues("clusterissuer", issuerName)
 	default:
 		err := fmt.Errorf("unexpected issuer type: %v", t)
 		log.Error(err, "The issuerRef referred to a registered Kind which is not yet handled. Ignoring.")
@@ -158,6 +158,10 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	r.Issuer.Client.Init(*baseUrl, string(secret.Data["username"]), string(secret.Data["password"]))
+
+	if issuerSpec.CaBundle != nil {
+		r.Issuer.Client.Http.SetCaBundle(*issuerSpec.CaBundle)
+	}
 
 	finalizerName := horizonissuer.IssuerNamespace + "/finalizer"
 

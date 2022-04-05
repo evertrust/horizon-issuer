@@ -29,8 +29,8 @@ func GetSpecAndStatus(issuer client.Object) (*sampleissuerapi.IssuerSpec, *sampl
 	switch t := issuer.(type) {
 	case *sampleissuerapi.Issuer:
 		return &t.Spec, &t.Status, nil
-	//case *sampleissuerapi.ClusterIssuer:
-	//	return &t.Spec, &t.Status, nil
+	case *sampleissuerapi.ClusterIssuer:
+		return &t.Spec, &t.Status, nil
 	default:
 		return nil, nil, fmt.Errorf("not an issuer type: %t", t)
 	}

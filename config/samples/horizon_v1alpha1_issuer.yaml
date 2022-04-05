@@ -3,7 +3,6 @@ kind: Issuer
 metadata:
   name: issuer-sample
 spec:
-  authSecretName: "issuer-sample-credentials"
-  url: "https://horizon-qa.evertrust.io"
-  profile: "IssuerProfile"
-
+  url: https://horizon-qa.evertrust.io
+  authSecretName: issuer-sample-credentials
+  profile: IssuerProfile
