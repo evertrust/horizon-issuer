@@ -20,12 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	issuerapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer"
+	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
-	issuerapi "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
-	horizonissuer "gitlab.com/evertrust/horizon-cm/internal/issuer"
-	issuerutil "gitlab.com/evertrust/horizon-cm/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,11 +56,6 @@ type CertificateRequestReconciler struct {
 	Clock                    clock.Clock
 	Issuer                   horizonissuer.HorizonIssuer
 }
-
-// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests,verbs=get;list;watch
-// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := ctrl.LoggerFrom(ctx)

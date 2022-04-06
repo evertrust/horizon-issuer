@@ -6,20 +6,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
-  name: clusterissuers.horizon.k8s.evertrust.io
+  name: issuers.horizon.evertrust.io
 spec:
-  group: horizon.k8s.evertrust.io
+  group: horizon.evertrust.io
   names:
-    kind: ClusterIssuer
-    listKind: ClusterIssuerList
-    plural: clusterissuers
-    singular: clusterissuer
-  scope: Cluster
+    kind: Issuer
+    listKind: IssuerList
+    plural: issuers
+    singular: issuer
+  scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterIssuer is the Schema for the clusterissuers API
+        description: Issuer is the Schema for the issuers API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation

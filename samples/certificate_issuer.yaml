@@ -7,5 +7,5 @@ spec:
   secretName: evertrust-test-cert
   issuerRef:
     name: issuer-sample
-    group: horizon.k8s.evertrust.io
+    group: horizon.evertrust.io
     kind: Issuer

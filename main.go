@@ -20,10 +20,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/evertrust/horizon-issuer/internal/controllers"
+	"github.com/evertrust/horizon-issuer/internal/issuer"
+	"github.com/evertrust/horizon-issuer/internal/version"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
-	"gitlab.com/evertrust/horizon-cm/internal/controllers"
-	"gitlab.com/evertrust/horizon-cm/internal/issuer"
-	"gitlab.com/evertrust/horizon-cm/internal/version"
 	"io/ioutil"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"os"
@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	horizonv1alpha1 "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
+	horizonv1alpha1 "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -106,12 +106,13 @@ func main() {
 	)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "d47d402b.k8s.evertrust.io",
+		Scheme:                     scheme,
+		MetricsBindAddress:         metricsAddr,
+		Port:                       9443,
+		HealthProbeBindAddress:     probeAddr,
+		LeaderElection:             enableLeaderElection,
+		LeaderElectionResourceLock: "leases",
+		LeaderElectionID:           "horizon-issuer-lock",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

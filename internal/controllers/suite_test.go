@@ -30,7 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	horizonv1alpha1 "gitlab.com/evertrust/horizon-cm/api/v1alpha1"
+	horizonv1alpha1 "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 

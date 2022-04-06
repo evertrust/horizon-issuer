@@ -1,4 +1,4 @@
-module gitlab.com/evertrust/horizon-cm
+module github.com/evertrust/horizon-issuer
 
 go 1.16
 
