@@ -20,7 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	util "github.com/evertrust/horizon-issuer/internal/issuer/util"
+	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
+	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"time"
@@ -34,7 +35,7 @@ import (
 )
 
 const (
-	issuerReadyConditionReason = "sample-issuer.IssuerController.Reconcile"
+	issuerReadyConditionReason = "horizon-issuer.IssuerController.Reconcile"
 	defaultHealthCheckInterval = time.Minute
 )
 
@@ -50,6 +51,7 @@ type IssuerReconciler struct {
 	Kind                     string
 	Scheme                   *runtime.Scheme
 	ClusterResourceNamespace string
+	HealthCheckerBuilder     horizonissuer.HealthCheckerBuilder
 }
 
 func (r *IssuerReconciler) newIssuer() (client.Object, error) {
@@ -77,7 +79,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, nil
 	}
 
-	issuerSpec, issuerStatus, err := util.GetSpecAndStatus(issuer)
+	issuerSpec, issuerStatus, err := issuerutil.GetSpecAndStatus(issuer)
 	if err != nil {
 		log.Error(err, "Unexpected error while getting issuer spec and status. Not retrying.")
 		return ctrl.Result{}, nil
@@ -86,7 +88,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	// Always attempt to update the Ready condition
 	defer func() {
 		if err != nil {
-			util.SetReadyCondition(issuerStatus, horizon.ConditionFalse, issuerReadyConditionReason, err.Error())
+			issuerutil.SetReadyCondition(issuerStatus, horizon.ConditionFalse, issuerReadyConditionReason, err.Error())
 		}
 		if updateErr := r.Status().Update(ctx, issuer); updateErr != nil {
 			err = utilerrors.NewAggregate([]error{err, updateErr})
@@ -94,8 +96,8 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		}
 	}()
 
-	if ready := util.GetReadyCondition(issuerStatus); ready == nil {
-		util.SetReadyCondition(issuerStatus, horizon.ConditionUnknown, issuerReadyConditionReason, "First seen")
+	if ready := issuerutil.GetReadyCondition(issuerStatus); ready == nil {
+		issuerutil.SetReadyCondition(issuerStatus, horizon.ConditionUnknown, issuerReadyConditionReason, "First seen")
 		return ctrl.Result{}, nil
 	}
 
@@ -118,16 +120,16 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, fmt.Errorf("%w, secret name: %s, reason: %v", errGetAuthSecret, secretName, err)
 	}
 
-	//checker, err := r.HealthCheckerBuilder(issuerSpec, secret.Data)
-	//if err != nil {
-	//	return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerBuilder, err)
-	//}
-	//
-	//if err := checker.Check(); err != nil {
-	//	return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerCheck, err)
-	//}
+	checker, err := r.HealthCheckerBuilder(issuerSpec, secret.Data)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerBuilder, err)
+	}
 
-	util.SetReadyCondition(issuerStatus, horizon.ConditionTrue, issuerReadyConditionReason, "Success")
+	if err := checker.Check(); err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerCheck, err)
+	}
+
+	issuerutil.SetReadyCondition(issuerStatus, horizon.ConditionTrue, issuerReadyConditionReason, "Success")
 	return ctrl.Result{RequeueAfter: defaultHealthCheckInterval}, nil
 }
 

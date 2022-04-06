@@ -21,7 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/evertrust/horizon-issuer/internal/controllers"
-	"github.com/evertrust/horizon-issuer/internal/issuer"
+	"github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	"github.com/evertrust/horizon-issuer/internal/version"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	"io/ioutil"
@@ -134,6 +134,7 @@ func main() {
 		Client:                   mgr.GetClient(),
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
+		HealthCheckerBuilder:     horizon.HorizonHealthCheckerFromIssuer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterIssuer")
 		os.Exit(1)
@@ -144,7 +145,7 @@ func main() {
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
 		Clock:                    clock.RealClock{},
-		Issuer:                   issuer.HorizonIssuer{},
+		Issuer:                   horizon.HorizonIssuer{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CertificateRequest")
 		os.Exit(1)

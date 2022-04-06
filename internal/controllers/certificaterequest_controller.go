@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 	issuerapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
-	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer"
+	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"net/url"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -147,16 +146,11 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// From here, we're ready to instantiate a Horizon client
-	baseUrl, err := url.Parse(issuerSpec.URL)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w: %v", errInvalidBaseUrl, err)
+	clientFromIssuer, err := horizonissuer.HorizonClientFromIssuer(issuerSpec, secret.Data)
+	if err != nil || clientFromIssuer == nil {
+		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}
-
-	r.Issuer.Client.Init(*baseUrl, string(secret.Data["username"]), string(secret.Data["password"]))
-
-	if issuerSpec.CaBundle != nil {
-		r.Issuer.Client.Http.SetCaBundle(*issuerSpec.CaBundle)
-	}
+	r.Issuer.Client = *clientFromIssuer
 
 	finalizerName := horizonissuer.IssuerNamespace + "/finalizer"
 
