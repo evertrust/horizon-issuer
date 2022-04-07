@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-var IssuerNamespace = "horizon.evertrust.io"
-var RequestIdAnnotation = IssuerNamespace + "/request-id"
+const IssuerNamespace = "horizon.evertrust.io"
+const RequestIdAnnotation = IssuerNamespace + "/request-id"
 
 type HorizonIssuer struct {
 	Client horizon.Horizon

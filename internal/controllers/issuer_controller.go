@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
@@ -30,12 +31,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	horizon "github.com/evertrust/horizon-issuer/api/v1alpha1"
 )
 
 const (
-	issuerReadyConditionReason = "horizon-issuer.IssuerController.Reconcile"
 	defaultHealthCheckInterval = time.Minute
 )
 
@@ -55,7 +53,7 @@ type IssuerReconciler struct {
 }
 
 func (r *IssuerReconciler) newIssuer() (client.Object, error) {
-	issuerGVK := horizon.GroupVersion.WithKind(r.Kind)
+	issuerGVK := horizonapi.GroupVersion.WithKind(r.Kind)
 	ro, err := r.Scheme.New(issuerGVK)
 	if err != nil {
 		return nil, err
@@ -88,7 +86,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	// Always attempt to update the Ready condition
 	defer func() {
 		if err != nil {
-			issuerutil.SetReadyCondition(issuerStatus, horizon.ConditionFalse, issuerReadyConditionReason, err.Error())
+			issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionFalse, "Error", err.Error())
 		}
 		if updateErr := r.Status().Update(ctx, issuer); updateErr != nil {
 			err = utilerrors.NewAggregate([]error{err, updateErr})
@@ -97,7 +95,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}()
 
 	if ready := issuerutil.GetReadyCondition(issuerStatus); ready == nil {
-		issuerutil.SetReadyCondition(issuerStatus, horizon.ConditionUnknown, issuerReadyConditionReason, "First seen")
+		issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionUnknown, "FirstSeen", "First seen")
 		return ctrl.Result{}, nil
 	}
 
@@ -106,9 +104,9 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	switch issuer.(type) {
-	case *horizon.Issuer:
+	case *horizonapi.Issuer:
 		secretName.Namespace = req.Namespace
-	case *horizon.ClusterIssuer:
+	case *horizonapi.ClusterIssuer:
 		secretName.Namespace = r.ClusterResourceNamespace
 	default:
 		log.Error(fmt.Errorf("unexpected issuer type: %t", issuer), "Not retrying.")
@@ -129,7 +127,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerCheck, err)
 	}
 
-	issuerutil.SetReadyCondition(issuerStatus, horizon.ConditionTrue, issuerReadyConditionReason, "Success")
+	issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionTrue, "Success", "Health check succeeded")
 	return ctrl.Result{RequeueAfter: defaultHealthCheckInterval}, nil
 }
 

@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	issuerapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
@@ -47,6 +47,8 @@ var (
 	errUnknownHorizon = errors.New("horizon returned an error")
 )
 
+const FinalizerName = horizonissuer.IssuerNamespace + "/finalizer"
+
 // CertificateRequestReconciler reconciles a CertificateRequest object
 type CertificateRequestReconciler struct {
 	client.Client
@@ -54,6 +56,7 @@ type CertificateRequestReconciler struct {
 	ClusterResourceNamespace string
 	Clock                    clock.Clock
 	Issuer                   horizonissuer.HorizonIssuer
+	RevokeCertificates       bool
 }
 
 func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
@@ -70,7 +73,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// Ignore CertificateRequest if issuerRef doesn't match our group
-	if certificateRequest.Spec.IssuerRef.Group != issuerapi.GroupVersion.Group {
+	if certificateRequest.Spec.IssuerRef.Group != horizonapi.GroupVersion.Group {
 		log.Info("Foreign group. Ignoring.", "group", certificateRequest.Spec.IssuerRef.Group)
 		return ctrl.Result{}, nil
 	}
@@ -88,7 +91,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// Ignore but log an error if the issuerRef.Kind is unrecognised
-	issuerGVK := issuerapi.GroupVersion.WithKind(certificateRequest.Spec.IssuerRef.Kind)
+	issuerGVK := horizonapi.GroupVersion.WithKind(certificateRequest.Spec.IssuerRef.Kind)
 	issuerRO, err := r.Scheme.New(issuerGVK)
 	if err != nil {
 		err = fmt.Errorf("%w: %v", errIssuerRef, err)
@@ -103,11 +106,11 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 	var secretNamespace string
 	switch t := issuer.(type) {
-	case *issuerapi.Issuer:
+	case *horizonapi.Issuer:
 		issuerName.Namespace = certificateRequest.Namespace
 		secretNamespace = certificateRequest.Namespace
 		log = log.WithValues("issuer", issuerName)
-	case *issuerapi.ClusterIssuer:
+	case *horizonapi.ClusterIssuer:
 		secretNamespace = r.ClusterResourceNamespace
 		log = log.WithValues("clusterissuer", issuerName)
 	default:
@@ -150,40 +153,30 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil || clientFromIssuer == nil {
 		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}
+
 	r.Issuer.Client = *clientFromIssuer
 
-	finalizerName := horizonissuer.IssuerNamespace + "/finalizer"
-
-	// examine DeletionTimestamp to determine if object is under deletion
-	if certificateRequest.ObjectMeta.DeletionTimestamp.IsZero() {
-		// The object is not being deleted, so if it does not have our finalizer,
-		// then lets add the finalizer and update the object. This is equivalent
-		// registering our finalizer.
-		if !controllerutil.ContainsFinalizer(&certificateRequest, finalizerName) {
-			controllerutil.AddFinalizer(&certificateRequest, finalizerName)
-			if err := r.Update(ctx, &certificateRequest); err != nil {
+	if r.RevokeCertificates {
+		// examine DeletionTimestamp to determine if object is under deletion
+		if certificateRequest.ObjectMeta.DeletionTimestamp.IsZero() {
+			// The object is not being deleted, so if it does not have our finalizer,
+			// then lets add the finalizer and update the object. This is equivalent
+			// registering our finalizer.
+			if !controllerutil.ContainsFinalizer(&certificateRequest, FinalizerName) {
+				controllerutil.AddFinalizer(&certificateRequest, FinalizerName)
+				if err := r.Update(ctx, &certificateRequest); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
+		} else {
+			// The object is being deleted
+			err = r.handleDeletion(ctx, &certificateRequest)
+			if err != nil {
 				return ctrl.Result{}, err
 			}
+			// Stop reconciliation as the item is being deleted
+			return ctrl.Result{}, nil
 		}
-	} else {
-		// The object is being deleted
-		if controllerutil.ContainsFinalizer(&certificateRequest, finalizerName) {
-			// our finalizer is present, so lets handle any external dependency
-			if err := r.Issuer.RevokeCertificate(ctx, &certificateRequest); err != nil {
-				// if fail to delete the external dependency here, return with error
-				// so that it can be retried
-				return ctrl.Result{}, err
-			}
-
-			// remove our finalizer from the list and update it.
-			controllerutil.RemoveFinalizer(&certificateRequest, finalizerName)
-			if err := r.Update(ctx, &certificateRequest); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-
-		// Stop reconciliation as the item is being deleted
-		return ctrl.Result{}, nil
 	}
 
 	// Ignore CertificateRequest if it is already Ready
@@ -250,6 +243,25 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
+	if controllerutil.ContainsFinalizer(certificateRequest, FinalizerName) {
+		// our finalizer is present, so lets handle any external dependency
+		if err := r.Issuer.RevokeCertificate(ctx, certificateRequest); err != nil {
+			// if fail to delete the external dependency here, return with error
+			// so that it can be retried
+			return err
+		}
+
+		// remove our finalizer from the list and update it.
+		controllerutil.RemoveFinalizer(certificateRequest, FinalizerName)
+		if err := r.Update(ctx, certificateRequest); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *CertificateRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {

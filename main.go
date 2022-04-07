@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	horizonv1alpha1 "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -52,18 +52,20 @@ var (
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
-	_ = horizonv1alpha1.AddToScheme(scheme)
+	_ = horizonapi.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 
 	_ = cmapi.AddToScheme(scheme)
 }
 
 func main() {
+	var revokeCertificates bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var clusterResourceNamespace string
 	var probeAddr string
 	var printVersion bool
+	flag.BoolVar(&revokeCertificates, "revoke-certificates", false, "Enable revocation of deleted certificates.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "", "The namespace for secrets in which cluster-scoped resources are found.")
@@ -146,6 +148,7 @@ func main() {
 		ClusterResourceNamespace: clusterResourceNamespace,
 		Clock:                    clock.RealClock{},
 		Issuer:                   horizon.HorizonIssuer{},
+		RevokeCertificates:       revokeCertificates,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CertificateRequest")
 		os.Exit(1)
