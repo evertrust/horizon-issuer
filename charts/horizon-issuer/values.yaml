@@ -1,4 +1,6 @@
-# Default values for aws-pca-issuer.
+# Default values for horizon-issuer.
+
+revokeCertificates: true
 
 replicaCount: 1
 

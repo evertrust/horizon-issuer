@@ -38,6 +38,9 @@ spec:
             - /manager
           args:
             - --leader-elect
+            {{- if .Values.revokeCertificates }}
+            - --revoke-certificates
+            {{- end }}
           ports:
             - containerPort: 8080
               name: http
