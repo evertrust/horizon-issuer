@@ -26,6 +26,8 @@ type IssuerSpec struct {
 	// for example: "https://sample-signer.example.com/api".
 	URL string `json:"url"`
 
+	// The Horizon Profile that will be used to enroll certificates. Your
+	// authenticated principal should have rights over this Profile.
 	Profile string `json:"profile"`
 
 	// A reference to a Secret in the same namespace as the referent. If the
@@ -52,6 +54,11 @@ type IssuerStatus struct {
 // +kubebuilder:subresource:status
 
 // Issuer is the Schema for the issuers API
+// +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
+// +kubebuilder:printcolumn:name="Horizon URL",type=string,JSONPath=`.spec.url`
+// +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.authSecretName`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
+
 type Issuer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

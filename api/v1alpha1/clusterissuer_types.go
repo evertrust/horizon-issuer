@@ -22,6 +22,10 @@ import (
 // +kubebuilder:subresource:status
 
 // ClusterIssuer is the Schema for the clusterissuers API
+// +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
+// +kubebuilder:printcolumn:name="Horizon URL",type=string,JSONPath=`.spec.url`
+// +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.authSecretName`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
 type ClusterIssuer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

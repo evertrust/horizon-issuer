@@ -16,7 +16,20 @@ spec:
     singular: clusterissuer
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.profile
+      name: Profile
+      type: string
+    - jsonPath: .spec.url
+      name: Horizon URL
+      type: string
+    - jsonPath: .spec.authSecretName
+      name: Secret
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ClusterIssuer is the Schema for the clusterissuers API
@@ -48,6 +61,8 @@ spec:
                   to trust the Horizon endpoint certificate
                 type: string
               profile:
+                description: The Horizon Profile that will be used to enroll certificates.
+                  Your authenticated principal should have rights over this Profile.
                 type: string
               url:
                 description: 'URL is the base URL for the endpoint of the signing
