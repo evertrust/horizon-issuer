@@ -4,8 +4,8 @@
 
 ## Prerequisites
 This software has been testing against the following environment :
-- Horizon 2.0.0 and above
-- Kubernetes 1.22 and above
+- Horizon version 2.1.0 and above
+- Kubernetes version 1.22 and above
 
 ## Installation
 
