@@ -17,13 +17,21 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .profile
+    - jsonPath: .spec.profile
       name: Profile
+      type: string
+    - jsonPath: .spec.url
+      name: Horizon URL
+      type: string
+    - jsonPath: .spec.authSecretName
+      name: Secret
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
       type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Issuer is the Schema for the issuers API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -55,6 +63,12 @@ spec:
                 description: The Horizon Profile that will be used to enroll certificates.
                   Your authenticated principal should have rights over this Profile.
                 type: string
+              revokeCertificates:
+                default: false
+                description: A boolean used to control whether this issuer should
+                  revoke certificates that have been issued through it when their
+                  Kubernetes object is deleted.
+                type: boolean
               url:
                 description: 'URL is the base URL for the endpoint of the signing
                   service, for example: "https://sample-signer.example.com/api".'
@@ -107,8 +121,7 @@ spec:
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}
 status:
   acceptedNames:
     kind: ""

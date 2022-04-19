@@ -59,13 +59,11 @@ func init() {
 }
 
 func main() {
-	var revokeCertificates bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var clusterResourceNamespace string
 	var probeAddr string
 	var printVersion bool
-	flag.BoolVar(&revokeCertificates, "revoke-certificates", false, "Enable revocation of deleted certificates.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "", "The namespace for secrets in which cluster-scoped resources are found.")
@@ -148,7 +146,6 @@ func main() {
 		ClusterResourceNamespace: clusterResourceNamespace,
 		Clock:                    clock.RealClock{},
 		Issuer:                   horizon.HorizonIssuer{},
-		RevokeCertificates:       revokeCertificates,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CertificateRequest")
 		os.Exit(1)

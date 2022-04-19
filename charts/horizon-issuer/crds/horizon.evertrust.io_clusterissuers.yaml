@@ -64,6 +64,12 @@ spec:
                 description: The Horizon Profile that will be used to enroll certificates.
                   Your authenticated principal should have rights over this Profile.
                 type: string
+              revokeCertificates:
+                default: false
+                description: A boolean used to control whether this issuer should
+                  revoke certificates that have been issued through it when their
+                  Kubernetes object is deleted.
+                type: boolean
               url:
                 description: 'URL is the base URL for the endpoint of the signing
                   service, for example: "https://sample-signer.example.com/api".'

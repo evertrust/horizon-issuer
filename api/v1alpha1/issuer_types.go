@@ -22,8 +22,8 @@ import (
 
 // IssuerSpec defines the desired state of Issuer
 type IssuerSpec struct {
-	// URL is the base URL for the endpoint of the signing service,
-	// for example: "https://sample-signer.example.com/api".
+	// URL is the base URL of your Horizon instance,
+	// for instance: "https://horizon.yourcompany.com".
 	URL string `json:"url"`
 
 	// The Horizon Profile that will be used to enroll certificates. Your
@@ -39,7 +39,14 @@ type IssuerSpec struct {
 
 	// An optional string containing the CA bundle required to
 	// trust the Horizon endpoint certificate
+	// +optional
 	CaBundle *string `json:"caBundle,omitempty"`
+
+	// A boolean used to control whether this issuer should revoke certificates
+	// that have been issued through it when their Kubernetes object is deleted.
+	// +kubebuilder:default:=false
+	// +optional
+	RevokeCertificates bool `json:"revokeCertificates"`
 }
 
 // IssuerStatus defines the observed state of Issuer

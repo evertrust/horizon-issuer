@@ -80,6 +80,5 @@ metadata:
 
 ### Revoking deleted certificates
 
-By default, Horizon issuer does not revoke certificates deleted from Kubernetes as cert-manager can reuse the private key kept in the according secret.
-
-If you want to enable that behavior, set the `revokeCertificates` to `true` in your `values.yaml` file.
+By default, Horizon issuer does not revoke certificates deleted from Kubernetes as cert-manager can reuse the private key kept in the deleted certificate's secret.
+If you want to revoke certificates are they are deleted, set the `revokeCertificates` property to `true` on your `Issuer` or `ClusterIssuer` object. When doing so, you may want to [clean up secrets as soon as certificates are revoked](https://cert-manager.io/docs/usage/certificate/#cleaning-up-secrets-when-certificates-are-deleted).

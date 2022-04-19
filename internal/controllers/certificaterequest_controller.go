@@ -156,7 +156,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	r.Issuer.Client = *clientFromIssuer
 
-	if r.RevokeCertificates {
+	if issuerSpec.RevokeCertificates {
 		// examine DeletionTimestamp to determine if object is under deletion
 		if certificateRequest.ObjectMeta.DeletionTimestamp.IsZero() {
 			// The object is not being deleted, so if it does not have our finalizer,
