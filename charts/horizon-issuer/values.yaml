@@ -1,7 +1,5 @@
 # Default values for horizon-issuer.
 
-revokeCertificates: true
-
 replicaCount: 1
 
 image:
@@ -37,6 +35,10 @@ podSecurityContext:
 
 securityContext:
   allowPrivilegeEscalation: false
+
+volumeMounts: []
+
+volumes: []
 
 resources: {}
 
