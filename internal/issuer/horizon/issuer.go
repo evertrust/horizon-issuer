@@ -30,6 +30,8 @@ func (r *HorizonIssuer) SubmitRequest(ctx context.Context, client client.Client,
 		profile,
 		certificateRequest.Spec.Request,
 		[]requests.LabelElement{},
+		nil,
+		nil,
 	)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to sign the CSR using Horizon"), err)
