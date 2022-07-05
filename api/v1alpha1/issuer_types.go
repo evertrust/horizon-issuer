@@ -42,6 +42,12 @@ type IssuerSpec struct {
 	// +optional
 	CaBundle *string `json:"caBundle,omitempty"`
 
+	// A boolean indicating if untrusted certificates should be allowed
+	// when connecting to the Horizon instance.
+	// +optional
+	// +kubebuilder:default:=false
+	SkipTLSVerify bool `json:"skipTLSVerify"`
+
 	// A boolean used to control whether this issuer should revoke certificates
 	// that have been issued through it when their Kubernetes object is deleted.
 	// +kubebuilder:default:=false

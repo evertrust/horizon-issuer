@@ -22,5 +22,9 @@ func HorizonClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[s
 		client.Http.SetCaBundle(*issuerSpec.CaBundle)
 	}
 
+	if issuerSpec.SkipTLSVerify {
+		client.Http.SkipTLSVerify()
+	}
+
 	return client, nil
 }
