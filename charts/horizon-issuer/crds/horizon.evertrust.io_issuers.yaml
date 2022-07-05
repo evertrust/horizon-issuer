@@ -69,9 +69,14 @@ spec:
                   revoke certificates that have been issued through it when their
                   Kubernetes object is deleted.
                 type: boolean
+              skipTLSVerify:
+                default: false
+                description: A boolean indicating if untrusted certificates should
+                  be allowed when connecting to the Horizon instance.
+                type: boolean
               url:
-                description: 'URL is the base URL for the endpoint of the signing
-                  service, for example: "https://sample-signer.example.com/api".'
+                description: 'URL is the base URL of your Horizon instance, for instance:
+                  "https://horizon.yourcompany.com".'
                 type: string
             required:
             - authSecretName
