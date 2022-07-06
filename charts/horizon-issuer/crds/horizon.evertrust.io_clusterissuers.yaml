@@ -57,8 +57,18 @@ spec:
                   (and defaults to the namespace that the controller runs in).
                 type: string
               caBundle:
-                description: An optional string containing the CA bundle required
-                  to trust the Horizon endpoint certificate
+                description: CaBundle contains the CA bundle required to trust the
+                  Horizon endpoint certificate
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels is a map of labels that will override labels set
+                  at the Certificate or Ingress levels.
+                type: object
+              owner:
+                description: Owner will override the owner value set at the Certificate
+                  or Ingress levels.
                 type: string
               profile:
                 description: The Horizon Profile that will be used to enroll certificates.
@@ -66,15 +76,19 @@ spec:
                 type: string
               revokeCertificates:
                 default: false
-                description: A boolean used to control whether this issuer should
+                description: RevokeCertificates controls whether this issuer should
                   revoke certificates that have been issued through it when their
                   Kubernetes object is deleted.
                 type: boolean
               skipTLSVerify:
                 default: false
-                description: A boolean indicating if untrusted certificates should
+                description: SkipTLSVerify indicates if untrusted certificates should
                   be allowed when connecting to the Horizon instance.
                 type: boolean
+              team:
+                description: Team will override the team value set at the Certificate
+                  or Ingress levels.
+                type: string
               url:
                 description: 'URL is the base URL of your Horizon instance, for instance:
                   "https://horizon.yourcompany.com".'

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/requests"
+	"github.com/evertrust/horizon-issuer/api/v1alpha1"
 	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
 	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
@@ -16,22 +17,26 @@ import (
 )
 
 const IssuerNamespace = "horizon.evertrust.io"
-const RequestIdAnnotation = IssuerNamespace + "/request-id"
+const (
+	RequestIdAnnotation = IssuerNamespace + "/request-id"
+	OwnerAnnotation     = IssuerNamespace + "/owner"
+	TeamAnnotation      = IssuerNamespace + "/team"
+)
 
 type HorizonIssuer struct {
 	Client horizon.Horizon
 }
 
-func (r *HorizonIssuer) SubmitRequest(ctx context.Context, client client.Client, profile string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) SubmitRequest(ctx context.Context, client client.Client, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 
-	logger.Info(fmt.Sprintf("Submitting request %s to profile %s", certificateRequest.UID, profile))
+	logger.Info(fmt.Sprintf("Submitting request %s to profile %s", certificateRequest.UID, issuer.Profile))
 	request, err := r.Client.Requests.DecentralizedEnroll(
-		profile,
+		issuer.Profile,
 		certificateRequest.Spec.Request,
-		[]requests.LabelElement{},
-		nil,
-		nil,
+		labels,
+		owner,
+		team,
 	)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to sign the CSR using Horizon"), err)
