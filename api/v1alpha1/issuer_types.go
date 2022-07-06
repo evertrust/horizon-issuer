@@ -22,8 +22,8 @@ import (
 
 // IssuerSpec defines the desired state of Issuer
 type IssuerSpec struct {
-	// URL is the base URL for the endpoint of the signing service,
-	// for example: "https://sample-signer.example.com/api".
+	// URL is the base URL of your Horizon instance,
+	// for instance: "https://horizon.yourcompany.com".
 	URL string `json:"url"`
 
 	// The Horizon Profile that will be used to enroll certificates. Your
@@ -37,9 +37,34 @@ type IssuerSpec struct {
 	// namespace that the controller runs in).
 	AuthSecretName string `json:"authSecretName"`
 
-	// An optional string containing the CA bundle required to
+	// CaBundle contains the CA bundle required to
 	// trust the Horizon endpoint certificate
+	// +optional
 	CaBundle *string `json:"caBundle,omitempty"`
+
+	// SkipTLSVerify indicates if untrusted certificates should be allowed
+	// when connecting to the Horizon instance.
+	// +optional
+	// +kubebuilder:default:=false
+	SkipTLSVerify bool `json:"skipTLSVerify"`
+
+	// RevokeCertificates controls whether this issuer should revoke certificates
+	// that have been issued through it when their Kubernetes object is deleted.
+	// +kubebuilder:default:=false
+	// +optional
+	RevokeCertificates bool `json:"revokeCertificates"`
+
+	// Labels is a map of labels that will override labels
+	// set at the Certificate or Ingress levels.
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Owner will override the owner value set
+	// at the Certificate or Ingress levels.
+	Owner *string `json:"owner,omitempty"`
+
+	// Team will override the team value set
+	// at the Certificate or Ingress levels.
+	Team *string `json:"team,omitempty"`
 }
 
 // IssuerStatus defines the observed state of Issuer

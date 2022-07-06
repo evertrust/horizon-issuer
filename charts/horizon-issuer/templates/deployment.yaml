@@ -38,9 +38,6 @@ spec:
             - /manager
           args:
             - --leader-elect
-            {{- if .Values.revokeCertificates }}
-            - --revoke-certificates
-            {{- end }}
           ports:
             - containerPort: 8080
               name: http
@@ -56,6 +53,10 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+          {{- if .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml .Values.volumeMounts | nindent 12 }}
+          {{- end }}
           env:
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
@@ -63,6 +64,10 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.volumes }}
+      volumes:
+        {{- toYaml .Values.volumes | nindent 8 }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

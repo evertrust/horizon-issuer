@@ -4,7 +4,7 @@
 
 ## Prerequisites
 This software has been testing against the following environment :
-- Horizon version 2.1.0 and above
+- Horizon version 2.2.0 and above
 - Kubernetes version 1.22 and above
 
 ## Installation
@@ -76,10 +76,57 @@ metadata:
 > **Warning** : be sure to set the `cert-manager.io/common-name` annotation as by default, ingress-shim will generate certificates without any DN. This will cause errors on Horizon's side.
 
 
+### Using labels, owners and teams
+Horizon offers useful features to categorize and better understand your certificates through metadata. You may specify metadata at three levels :
+
+#### On an ingress object
+You may use the following annotations on ingresses that will be reflected onto the enrolled certificate :
+```yaml
+horizon.evertrust.io/owner: owner-name
+horizon.evertrust.io/team: team-name
+```
+
+#### On a certificate object
+You may use the following annotations on the cert-manager `Certificate` object, that will be reflected onto the enrolled certificate :
+```yaml
+horizon.evertrust.io/owner: owner-name
+horizon.evertrust.io/team: team-name
+```
+These values, if set, will take precedence over annotations on an `Ingress` object.
+
+#### On a `ClusterIssuer` or `Issuer` object
+You may configure your issuer to apply certain metadata to every certificate enrolled through it, by modifying its spec. The following keys are available :
+```yaml
+apiVersion: horizon.evertrust.io/v1alpha1
+kind: ClusterIssuer
+spec:
+  owner: owner-name
+  team: team-name
+  labels:
+    label-key: label-value
+```
+These values, if set, will take precedence over annotations on an `Ingress` or `Certificate` object.
+
 ## Configuration
+
+### Trusting custom CAs
+
+Your Horizon instance may be presenting a certificate issued by your custom CA. To trust that certificate, you may specify a CA bundle when creating the issuer through the `caBundle` field. You may also completely disable TLS verification by setting `skipTLSVerify` to `true`, this is however highly discouraged. 
+
+Example :
+```yaml
+apiVersion: horizon.evertrust.io/v1alpha1
+kind: ClusterIssuer
+spec:
+  caBundle: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+  skipTLSVerify: false
+```
+You can also mount your custom `/etc/ssl/certs` directory if you wish to have more control over the underlying OS trust store.
 
 ### Revoking deleted certificates
 
-By default, Horizon issuer does not revoke certificates deleted from Kubernetes as cert-manager can reuse the private key kept in the according secret.
-
-If you want to enable that behavior, set the `revokeCertificates` to `true` in your `values.yaml` file.
+By default, Horizon issuer does not revoke certificates deleted from Kubernetes as cert-manager can reuse the private key kept in the deleted certificate's secret.
+If you want to revoke certificates are they are deleted, set the `revokeCertificates` property to `true` on your `Issuer` or `ClusterIssuer` object. When doing so, you may want to [clean up secrets as soon as certificates are revoked](https://cert-manager.io/docs/usage/certificate/#cleaning-up-secrets-when-certificates-are-deleted).

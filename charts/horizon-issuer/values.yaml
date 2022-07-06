@@ -1,12 +1,10 @@
 # Default values for horizon-issuer.
 
-revokeCertificates: true
-
 replicaCount: 1
 
 image:
   repository: registry.evertrust.io/horizon-issuer
-  tag: 0.0.1
+  tag: 0.0.3
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -37,6 +35,10 @@ podSecurityContext:
 
 securityContext:
   allowPrivilegeEscalation: false
+
+volumeMounts: []
+
+volumes: []
 
 resources: {}
 
