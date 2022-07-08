@@ -44,9 +44,6 @@ func (r *HorizonIssuer) SubmitRequest(ctx context.Context, client client.Client,
 
 	// Update the request with the Horizon request ID
 	certificateRequest.Annotations[RequestIdAnnotation] = request.Id
-	if err := client.Update(ctx, certificateRequest); err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to update the cert request"), err)
-	}
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,

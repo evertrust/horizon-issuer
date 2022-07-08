@@ -18,7 +18,7 @@ rules:
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["cert-manager.io"]
-    resources: ["certificaterequests"]
+    resources: ["certificaterequests", "certificates"]
     verbs: ["get", "list", "update", "watch"]
 
   - apiGroups: ["cert-manager.io"]
