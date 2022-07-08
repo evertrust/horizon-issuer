@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -146,9 +147,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			// registering our finalizer.
 			if !controllerutil.ContainsFinalizer(&certificateRequest, FinalizerName) {
 				controllerutil.AddFinalizer(&certificateRequest, FinalizerName)
-				if err := r.Update(ctx, &certificateRequest); err != nil {
-					return ctrl.Result{}, err
-				}
 			}
 		} else {
 			// The object is being deleted
@@ -188,14 +186,25 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, nil
 	}
 
-	// Always attempt to update the Ready condition
+	// Update the CSR object when returning from the Reconcile function
 	defer func() {
 		if err != nil {
 			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
 		}
+
+		annotations := certificateRequest.Annotations
+		// Update the Status subresource where most of the CSR data lives (condition, certificate...)
 		if updateErr := r.Status().Update(ctx, &certificateRequest); updateErr != nil {
 			err = utilerrors.NewAggregate([]error{err, updateErr})
 			result = ctrl.Result{}
+		}
+		// If an annotation was modified, we need to trigger an additional update request
+		if !reflect.DeepEqual(annotations, certificateRequest.Annotations) {
+			certificateRequest.Annotations = annotations
+			if updateErr := r.Update(ctx, &certificateRequest); updateErr != nil {
+				err = utilerrors.NewAggregate([]error{err, updateErr})
+				result = ctrl.Result{}
+			}
 		}
 	}()
 
@@ -246,9 +255,6 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 
 		// remove our finalizer from the list and update it.
 		controllerutil.RemoveFinalizer(certificateRequest, FinalizerName)
-		if err := r.Update(ctx, certificateRequest); err != nil {
-			return err
-		}
 	}
 
 	return nil
