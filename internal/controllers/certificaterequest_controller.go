@@ -191,7 +191,15 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Update the CSR object when returning from the Reconcile function
 	defer func() {
 		if err != nil {
-			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+			if !cmutil.CertificateRequestHasCondition(&certificateRequest, cmapi.CertificateRequestCondition{
+				Type:   cmapi.CertificateRequestConditionInvalidRequest,
+				Status: cmmeta.ConditionTrue,
+				Reason: cmapi.CertificateRequestReasonFailed,
+			}) {
+				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+			} else {
+				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, "Invalid request")
+			}
 		}
 
 		var updateErr error

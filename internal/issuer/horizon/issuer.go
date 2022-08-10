@@ -42,7 +42,7 @@ func (r *HorizonIssuer) SubmitRequest(ctx context.Context, c client.Client, issu
 		team,
 	)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to sign the CSR using Horizon"), err)
+		return r.handleFailedRequest(certificateRequest, err)
 	}
 
 	// Update the request with the Horizon request ID
@@ -97,6 +97,18 @@ func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 		Requeue:      true,
 		RequeueAfter: time.Minute / 4,
 	}, nil
+}
+
+func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {
+	cmutil.SetCertificateRequestCondition(
+		certificateRequest,
+		cmapi.CertificateRequestConditionInvalidRequest,
+		cmmeta.ConditionTrue,
+		cmapi.CertificateRequestReasonFailed,
+		err.Error(),
+	)
+
+	return ctrl.Result{}, err
 }
 
 func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
