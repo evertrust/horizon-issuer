@@ -12,8 +12,8 @@ type HealthChecker interface {
 
 type HealthCheckerBuilder func(*horizonapi.IssuerSpec, map[string][]byte) (*HorizonHealthChecker, error)
 
-func HorizonHealthCheckerFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*HorizonHealthChecker, error) {
-	client, err := HorizonClientFromIssuer(issuerSpec, secretData)
+func HealthCheckerFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*HorizonHealthChecker, error) {
+	client, err := ClientFromIssuer(issuerSpec, secretData)
 	if err != nil {
 		return nil, err
 	}
