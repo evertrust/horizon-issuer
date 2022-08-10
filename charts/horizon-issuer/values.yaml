@@ -58,3 +58,5 @@ affinity: {}
 env: {}
 
 verbose: false
+
+clusterResourceNamespace: ""

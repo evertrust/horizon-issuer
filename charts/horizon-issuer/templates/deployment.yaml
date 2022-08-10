@@ -38,6 +38,9 @@ spec:
             - /manager
           args:
             - --leader-elect
+            {{- if .Values.clusterResourceNamespace }}
+            - --cluster-resource-namespace {{ .Values.clusterResourceNamespace }}
+            {{- end }}
             {{- if .Values.verbose }}
             - --verbose
             {{- end }}
