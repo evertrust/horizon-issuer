@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/requests"
+	"github.com/evertrust/horizon-go/rfc5280"
 	"github.com/evertrust/horizon-issuer/api/v1alpha1"
-	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
-	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"time"
 )
 
@@ -27,8 +27,11 @@ type HorizonIssuer struct {
 	Client horizon.Horizon
 }
 
-func (r *HorizonIssuer) SubmitRequest(ctx context.Context, client client.Client, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	logger := log.FromContext(ctx)
+// SubmitRequest is used to initially submit a decentralized enrollement request
+// to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
+// and sets an annotation on the CertificateRequest object to ensure it is not run again.
+func (r *HorizonIssuer) SubmitRequest(ctx context.Context, c client.Client, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Submitting request %s to profile %s", certificateRequest.UID, issuer.Profile))
 	request, err := r.Client.Requests.DecentralizedEnroll(
@@ -53,14 +56,13 @@ func (r *HorizonIssuer) SubmitRequest(ctx context.Context, client client.Client,
 		"Submitted request to Horizon",
 	)
 
-	return ctrl.Result{
-		Requeue:      true,
-		RequeueAfter: time.Minute,
-	}, nil
+	return ctrl.Result{}, nil
 }
 
+// UpdateRequest will fetch fresh request data from Horizon, using the horizon.evertrust.io/request-id
+// annotation. It will then dispatch the action to the correct handler function.
 func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	logger := log.FromContext(ctx)
+	logger := ctrl.LoggerFrom(ctx)
 
 	request, err := r.Client.Requests.Get(certificateRequest.Annotations[RequestIdAnnotation])
 	if err != nil {
@@ -81,7 +83,7 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
-	logger := log.FromContext(ctx)
+	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
 	_, err := r.Client.Requests.Revoke(string(certificateRequest.Status.Certificate), "UNSPECIFIED")
@@ -118,15 +120,28 @@ func (r *HorizonIssuer) handleCompletedRequest(request *requests.HorizonRequest,
 		"Request approved on Horizon",
 	)
 
-	certificateRequest.Status.Certificate = []byte(request.Certificate.Certificate)
+	trustchain, err := r.Client.Rfc5280.Trustchain([]byte(request.Certificate.Certificate), rfc5280.LeafToRoot)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
+	}
 
-	cmutil.SetCertificateRequestCondition(
-		certificateRequest,
-		cmapi.CertificateRequestConditionReady,
-		cmmeta.ConditionTrue,
-		cmapi.CertificateRequestReasonIssued,
-		"Signed",
-	)
+	var certificate, ca string
+	defer func() {
+		if ca != "" {
+			certificateRequest.Status.CA = []byte(ca)
+		}
+		if certificate != "" {
+			certificateRequest.Status.Certificate = []byte(certificate)
+			cmutil.SetCertificateRequestCondition(
+				certificateRequest,
+				cmapi.CertificateRequestConditionReady,
+				cmmeta.ConditionTrue,
+				cmapi.CertificateRequestReasonIssued,
+				"Signed",
+			)
+		}
+	}()
+	certificate, ca = BuildPemTrustchain(trustchain)
 
 	// We don't requeue this request since it is completed
 	return ctrl.Result{}, nil
