@@ -73,9 +73,11 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		if err := client.IgnoreNotFound(err); err != nil {
 			return ctrl.Result{}, fmt.Errorf("unexpected get error: %v", err)
 		}
-		log.Info("Not found. Ignoring.")
+		log.V(1).Info("Not found. Ignoring.")
 		return ctrl.Result{}, nil
 	}
+
+	log.V(1).Info(fmt.Sprintf("Started reconciliation loop"))
 
 	issuerSpec, issuerStatus, err := issuerutil.GetSpecAndStatus(issuer)
 	if err != nil {
@@ -86,15 +88,18 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	// Always attempt to update the Ready condition
 	defer func() {
 		if err != nil {
+			log.V(1).Info("Setting ready condition to false because of error", "error", err.Error())
 			issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionFalse, "Error", err.Error())
 		}
 		if updateErr := r.Status().Update(ctx, issuer); updateErr != nil {
 			err = utilerrors.NewAggregate([]error{err, updateErr})
+			log.V(1).Info("Failed to set ready condition", "error", updateErr)
 			result = ctrl.Result{}
 		}
 	}()
 
 	if ready := issuerutil.GetReadyCondition(issuerStatus); ready == nil {
+		log.V(1).Info("Issuer has no ready condition yet, treating it as first seen.")
 		issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionUnknown, "FirstSeen", "First seen")
 		return ctrl.Result{}, nil
 	}
@@ -118,6 +123,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, fmt.Errorf("%w, secret name: %s, reason: %v", errGetAuthSecret, secretName, err)
 	}
 
+	log.V(1).Info("Starting health check")
 	checker, err := r.HealthCheckerBuilder(issuerSpec, secret.Data)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerBuilder, err)
@@ -127,6 +133,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerCheck, err)
 	}
 
+	log.V(1).Info("Health check succeeded")
 	issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionTrue, "Success", "Health check succeeded")
 	return ctrl.Result{RequeueAfter: defaultHealthCheckInterval}, nil
 }

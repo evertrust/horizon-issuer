@@ -20,14 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/evertrust/horizon-go/http"
 	"github.com/evertrust/horizon-go/requests"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
-	cmutil "github.com/jetstack/cert-manager/pkg/api/util"
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
-	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +39,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var (
@@ -68,13 +67,13 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err := client.IgnoreNotFound(err); err != nil {
 			return ctrl.Result{}, fmt.Errorf("unexpected get error: %v", err)
 		}
-		log.Info("Not found. Ignoring.")
+		log.V(1).Info("Not found. Ignoring.")
 		return ctrl.Result{}, nil
 	}
 
 	// Ignore CertificateRequest if issuerRef doesn't match our group
 	if certificateRequest.Spec.IssuerRef.Group != horizonapi.GroupVersion.Group {
-		log.Info("Foreign group. Ignoring.", "group", certificateRequest.Spec.IssuerRef.Group)
+		log.V(1).Info("Foreign group. Ignoring.", "group", certificateRequest.Spec.IssuerRef.Group)
 		return ctrl.Result{}, nil
 	}
 
@@ -116,7 +115,8 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	if !issuerutil.IsReady(issuerStatus) {
-		return ctrl.Result{}, errIssuerNotReady
+		log.V(1).Info("Issuer not ready")
+		return ctrl.Result{}, nil
 	}
 
 	secretName := types.NamespacedName{
@@ -132,7 +132,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// From here, we're ready to instantiate a Horizon client
-	clientFromIssuer, err := horizonissuer.HorizonClientFromIssuer(issuerSpec, secret.Data)
+	clientFromIssuer, err := horizonissuer.ClientFromIssuer(issuerSpec, secret.Data)
 	if err != nil || clientFromIssuer == nil {
 		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}
@@ -164,7 +164,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Type:   cmapi.CertificateRequestConditionReady,
 		Status: cmmeta.ConditionTrue,
 	}) {
-		log.Info("CertificateRequest is Ready. Ignoring.")
+		log.V(1).Info("CertificateRequest is Ready. Ignoring.")
 		return ctrl.Result{}, nil
 	}
 	// Ignore CertificateRequest if it is already Failed
@@ -173,7 +173,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Status: cmmeta.ConditionFalse,
 		Reason: cmapi.CertificateRequestReasonFailed,
 	}) {
-		log.Info("CertificateRequest is Failed. Ignoring.")
+		log.V(1).Info("CertificateRequest is Failed. Ignoring.")
 		return ctrl.Result{}, nil
 	}
 	// Ignore CertificateRequest if it already has a Denied Ready Reason
@@ -182,9 +182,11 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Status: cmmeta.ConditionFalse,
 		Reason: cmapi.CertificateRequestReasonDenied,
 	}) {
-		log.Info("CertificateRequest already has a Ready condition with Denied Reason. Ignoring.")
+		log.V(1).Info("CertificateRequest already has a Ready condition with Denied Reason. Ignoring.")
 		return ctrl.Result{}, nil
 	}
+
+	certificateRequestCopy := certificateRequest.DeepCopy()
 
 	// Update the CSR object when returning from the Reconcile function
 	defer func() {
@@ -192,19 +194,18 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
 		}
 
-		annotations := certificateRequest.Annotations
-		// Update the Status subresource where most of the CSR data lives (condition, certificate...)
-		if updateErr := r.Status().Update(ctx, &certificateRequest); updateErr != nil {
+		var updateErr error
+
+		// if annotations changed we have to call .Update() and not .UpdateStatus()
+		if !reflect.DeepEqual(certificateRequestCopy.Annotations, certificateRequest.Annotations) {
+			updateErr = r.Update(ctx, &certificateRequest)
+		} else {
+			updateErr = r.Status().Update(ctx, &certificateRequest)
+		}
+
+		if updateErr != nil {
 			err = utilerrors.NewAggregate([]error{err, updateErr})
 			result = ctrl.Result{}
-		}
-		// If an annotation was modified, we need to trigger an additional update request
-		if !reflect.DeepEqual(annotations, certificateRequest.Annotations) {
-			certificateRequest.Annotations = annotations
-			if updateErr := r.Update(ctx, &certificateRequest); updateErr != nil {
-				err = utilerrors.NewAggregate([]error{err, updateErr})
-				result = ctrl.Result{}
-			}
 		}
 	}()
 
@@ -249,7 +250,7 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 			if _, isHorizonError := err.(*http.HorizonErrorResponse); !isHorizonError {
 				return err
 			} else {
-				log.FromContext(ctx).Info(fmt.Sprintf("Horizon returned an error when revoking the certificate : %s. Marking the certificate as revoked to avoid a loop.", err.Error()))
+				ctrl.LoggerFrom(ctx).Info(fmt.Sprintf("Horizon returned an error when revoking the certificate : %s. Marking the certificate as revoked to avoid a loop.", err.Error()))
 			}
 		}
 
