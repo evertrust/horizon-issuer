@@ -56,3 +56,5 @@ tolerations: []
 affinity: {}
 
 env: {}
+
+verbose: false
