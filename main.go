@@ -20,25 +20,24 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"github.com/evertrust/horizon-issuer/internal/controllers"
 	"github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	"github.com/evertrust/horizon-issuer/internal/version"
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1"
 	"io/ioutil"
 	"k8s.io/apimachinery/pkg/util/clock"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -64,6 +63,7 @@ func main() {
 	var clusterResourceNamespace string
 	var probeAddr string
 	var printVersion bool
+	var verbose bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "", "The namespace for secrets in which cluster-scoped resources are found.")
@@ -71,10 +71,7 @@ func main() {
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&printVersion, "version", false, "Print version to stdout and exit")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
+	flag.BoolVar(&verbose, "verbose", false, "Verbose logger preset")
 	flag.Parse()
 
 	if printVersion {
@@ -82,7 +79,7 @@ func main() {
 		return
 	}
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(zap.New(zap.UseDevMode(verbose), zap.ConsoleEncoder()))
 
 	if clusterResourceNamespace == "" {
 		var err error
@@ -124,6 +121,7 @@ func main() {
 		Client:                   mgr.GetClient(),
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
+		HealthCheckerBuilder:     horizon.HealthCheckerFromIssuer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Issuer")
 		os.Exit(1)
@@ -134,7 +132,7 @@ func main() {
 		Client:                   mgr.GetClient(),
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
-		HealthCheckerBuilder:     horizon.HorizonHealthCheckerFromIssuer,
+		HealthCheckerBuilder:     horizon.HealthCheckerFromIssuer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterIssuer")
 		os.Exit(1)

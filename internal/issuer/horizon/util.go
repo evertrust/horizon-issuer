@@ -7,7 +7,7 @@ import (
 	"net/url"
 )
 
-func HorizonClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
+func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
 	client := new(horizon.Horizon)
 
 	baseUrl, err := url.Parse(issuerSpec.URL)

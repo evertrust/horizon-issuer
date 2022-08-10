@@ -38,6 +38,9 @@ spec:
             - /manager
           args:
             - --leader-elect
+            {{- if .Values.verbose }}
+            - --verbose
+            {{- end }}
           ports:
             - containerPort: 8080
               name: http
