@@ -46,4 +46,9 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["signers"]
     verbs: ["approve"]
+
+  # Ingress
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
 {{ end }}
