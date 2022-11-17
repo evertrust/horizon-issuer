@@ -20,14 +20,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"reflect"
+	"time"
+
 	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
+	"github.com/cert-manager/cert-manager/pkg/util/pki"
 	"github.com/evertrust/horizon-go/http"
 	"github.com/evertrust/horizon-go/requests"
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
-	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
-	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,12 +37,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"net"
-	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"time"
+
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
+	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 )
 
 var (
@@ -188,22 +191,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, nil
 	}
 
-	if issuerSpec.DnsChecker != nil {
-		resolver := &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: time.Millisecond * time.Duration(10000),
-				}
-				return d.DialContext(ctx, network, issuerSpec.DnsChecker.Server)
-			},
-		}
-		_, err := resolver.LookupIP(context.Background(), "ip", "www.google.com")
-		if err != nil {
-			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, "Invalid request")
-		}
-	}
-
 	certificateRequestCopy := certificateRequest.DeepCopy()
 
 	// Update the CSR object when returning from the Reconcile function
@@ -248,6 +235,35 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		message := "The CertificateRequest was denied by an approval controller"
 		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonDenied, message)
 		return ctrl.Result{}, nil
+	}
+
+	if issuerSpec.DnsChecker != nil {
+		// parse the certificate request and get all SANs
+		csr, err := pki.DecodeX509CertificateRequestBytes(certificateRequest.Spec.Request)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("%w", err)
+		}
+
+		toCheck := []string{csr.Subject.CommonName}
+		toCheck = append(toCheck, csr.DNSNames...)
+
+		// check if the SANs are valid
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout: time.Millisecond * time.Duration(10000),
+				}
+				return d.DialContext(ctx, network, issuerSpec.DnsChecker.Server)
+			},
+		}
+		for _, dnsName := range toCheck {
+			log.Info("Checking DNS name", "dnsName", dnsName)
+			_, err := resolver.LookupHost(context.Background(), dnsName)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("Certificate failed the DNS validation: could not resolve %s on %s", dnsName, issuerSpec.DnsChecker.Server)
+			}
+		}
 	}
 
 	// If CertificateRequest has not been approved, we should submit the request.

@@ -59,6 +59,15 @@ spec:
                 description: CaBundle contains the CA bundle required to trust the
                   Horizon endpoint certificate
                 type: string
+              dnsChecker:
+                description: DnsChecker indicates that the issuer should validate
+                  that the DNS record associated with a certificate
+                properties:
+                  server:
+                    type: string
+                required:
+                - server
+                type: object
               labels:
                 additionalProperties:
                   type: string
