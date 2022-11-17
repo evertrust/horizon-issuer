@@ -35,10 +35,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"net"
 	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"time"
 )
 
 var (
@@ -184,6 +186,22 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}) {
 		log.V(1).Info("CertificateRequest already has a Ready condition with Denied Reason. Ignoring.")
 		return ctrl.Result{}, nil
+	}
+
+	if issuerSpec.DnsChecker != nil {
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout: time.Millisecond * time.Duration(10000),
+				}
+				return d.DialContext(ctx, network, issuerSpec.DnsChecker.Server)
+			},
+		}
+		_, err := resolver.LookupIP(context.Background(), "ip", "www.google.com")
+		if err != nil {
+			setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, "Invalid request")
+		}
 	}
 
 	certificateRequestCopy := certificateRequest.DeepCopy()
