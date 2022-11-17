@@ -65,6 +65,14 @@ type IssuerSpec struct {
 	// Team will override the team value set
 	// at the Certificate or Ingress levels.
 	Team *string `json:"team,omitempty"`
+
+	// DnsChecker indicates that the issuer should
+	// validate that the DNS record associated with a certificate
+	DnsChecker *IssuerDnsChecker `json:"dnsChecker,omitempty"`
+}
+
+type IssuerDnsChecker struct {
+	Server string `json:"server"`
 }
 
 // IssuerStatus defines the observed state of Issuer
