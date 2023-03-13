@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/clock"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -60,12 +61,14 @@ func init() {
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
+	var healthCheckInterval int
 	var clusterResourceNamespace string
 	var probeAddr string
 	var printVersion bool
 	var verbose bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.IntVar(&healthCheckInterval, "health-check-interval", 60, "Number of seconds between two successful Horizon health checks.")
 	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "", "The namespace for secrets in which cluster-scoped resources are found.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -97,6 +100,7 @@ func main() {
 	setupLog.Info(
 		"starting",
 		"version", version.Version,
+		"health-check-interval", healthCheckInterval,
 		"enable-leader-election", enableLeaderElection,
 		"metrics-addr", metricsAddr,
 		"cluster-resource-namespace", clusterResourceNamespace,
@@ -122,6 +126,7 @@ func main() {
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
 		HealthCheckerBuilder:     horizon.HealthCheckerFromIssuer,
+		HealthCheckInterval:      time.Duration(healthCheckInterval) * time.Second,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Issuer")
 		os.Exit(1)
@@ -133,6 +138,7 @@ func main() {
 		Scheme:                   mgr.GetScheme(),
 		ClusterResourceNamespace: clusterResourceNamespace,
 		HealthCheckerBuilder:     horizon.HealthCheckerFromIssuer,
+		HealthCheckInterval:      time.Duration(healthCheckInterval) * time.Second,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterIssuer")
 		os.Exit(1)

@@ -4,7 +4,7 @@ replicaCount: 1
 
 image:
   repository: registry.evertrust.io/horizon-issuer
-  tag: 0.1.0
+  tag: 0.1.1
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -60,3 +60,6 @@ env: {}
 verbose: false
 
 clusterResourceNamespace: ""
+
+# Number of seconds between two successful Horizon health checks.
+healthCheckInterval: 120

@@ -38,6 +38,7 @@ spec:
             - /manager
           args:
             - --leader-elect
+            - --health-check-interval={{ .Values.healthCheckInterval }}
             {{- if .Values.clusterResourceNamespace }}
             - --cluster-resource-namespace {{ .Values.clusterResourceNamespace }}
             {{- end }}

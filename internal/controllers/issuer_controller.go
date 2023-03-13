@@ -33,10 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	defaultHealthCheckInterval = time.Minute
-)
-
 var (
 	errGetAuthSecret        = errors.New("failed to get Secret containing Issuer credentials")
 	errHealthCheckerBuilder = errors.New("failed to build the healthchecker")
@@ -50,6 +46,7 @@ type IssuerReconciler struct {
 	Scheme                   *runtime.Scheme
 	ClusterResourceNamespace string
 	HealthCheckerBuilder     horizonissuer.HealthCheckerBuilder
+	HealthCheckInterval      time.Duration
 }
 
 func (r *IssuerReconciler) newIssuer() (client.Object, error) {
@@ -135,7 +132,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 
 	log.V(1).Info("Health check succeeded")
 	issuerutil.SetReadyCondition(issuerStatus, horizonapi.ConditionTrue, "Success", "Health check succeeded")
-	return ctrl.Result{RequeueAfter: defaultHealthCheckInterval}, nil
+	return ctrl.Result{RequeueAfter: r.HealthCheckInterval}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
