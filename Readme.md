@@ -20,7 +20,7 @@ helm repo add evertrust https://repo.evertrust.io/repository/charts
 Install the chart in your cluster :
 
 ```shell
-helm install cm evertrust/horizon-issuer
+helm install horizon-issuer evertrust/horizon-issuer
 ```
 
 The default configuration should be fine for most cases. If you want to check out the configuration options, see
@@ -32,7 +32,16 @@ Since the chart installs CRDs, please ensure that you have the appropriate permi
 
 ### Setting up an Horizon issuer
 
-Create an `Issuer` or `ClusterIssuer` object depending on the scope you want to issue certificates on :
+First, provide your Horizon credentials in a secret you may create with :
+
+```shell
+kubectl create secret generic horizon-credentials \
+ --from-literal=username=<horizon username> \
+ --from-literal=password=<horizon password>
+```
+These credentials should be grant the ability to enroll certificates on a WebRA profile.
+
+Then, create an `Issuer` or `ClusterIssuer` object depending on the scope you want to issue certificates on :
 
 ```yaml
 apiVersion: horizon.evertrust.io/v1alpha1
@@ -44,14 +53,7 @@ spec:
   authSecretName: horizon-credentials
   profile: IssuerProfile
 ```
-
-Then, provide your Horizon credentials in a secret you may create with :
-
-```shell
-kubectl create secret generic issuer-sample-credentials \
- --from-literal=username=<horizon username> \
- --from-literal=password=<horizon password>
-```
+This object spec references the credentials secret we just created.
 
 ### Issuing certificates
 
