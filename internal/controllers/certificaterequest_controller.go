@@ -207,7 +207,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 		}
 
-		var updateErr error
+		var updateErr, parentUpdateErr error
 
 		// if annotations changed we have to call .Update() and not .UpdateStatus()
 		if !reflect.DeepEqual(certificateRequestCopy.Annotations, certificateRequest.Annotations) {
@@ -216,8 +216,18 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			updateErr = r.Status().Update(ctx, &certificateRequest)
 		}
 
+		// if CertificateIdAnnotation was set, we should update the parent Certificate object with the annotation
+		if certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation] != "" {
+			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
+			if err != nil {
+				log.Error(err, "Unable to get the Certificate object. Ignoring.")
+			}
+			certificate.Annotations[horizonissuer.LastCertificateIdAnnotation] = certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation]
+			parentUpdateErr = r.Update(ctx, certificate)
+		}
+
 		if updateErr != nil {
-			err = utilerrors.NewAggregate([]error{err, updateErr})
+			err = utilerrors.NewAggregate([]error{err, updateErr, parentUpdateErr})
 			result = ctrl.Result{}
 		}
 	}()
@@ -272,11 +282,25 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
 			return r.Issuer.UpdateRequest(ctx, &certificateRequest)
 		} else {
-			labels, owner, team, err := r.certificateMetadata(ctx, &certificateRequest)
+			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
 			if err != nil {
-				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+				return ctrl.Result{}, fmt.Errorf("%w", err)
 			}
-			return r.Issuer.SubmitRequest(ctx, r.Client, *issuerSpec, labels, owner, team, &certificateRequest)
+			parentIssuingReason := cmutil.GetCertificateCondition(certificate, cmapi.CertificateConditionIssuing).Reason
+			// If the parent certificate already has a CertificateIdAnnotation, we should submit a renew request
+			shoudlRenew := metav1.HasAnnotation(certificate.ObjectMeta, horizonissuer.LastCertificateIdAnnotation) &&
+				(parentIssuingReason == "ManuallyTriggered" || parentIssuingReason == "Renewing" || parentIssuingReason == "Expired")
+
+			if shoudlRenew {
+				return r.Issuer.SubmitRenewRequest(ctx, *issuerSpec, &certificateRequest, certificate.Annotations[horizonissuer.LastCertificateIdAnnotation])
+			} else {
+				// Else, we consider this a new certificate and submit an enroll request
+				labels, owner, team, err := r.certificateMetadata(ctx, &certificateRequest)
+				if err != nil {
+					setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+				}
+				return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, &certificateRequest)
+			}
 		}
 	}
 
@@ -309,7 +333,7 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 	var team *string
 	var labels []requests.LabelElement
 
-	certificate, err := r.certificateFromRequest(ctx, certificateRequest)
+	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -398,19 +422,6 @@ func (r *CertificateRequestReconciler) issuerFromRequest(ctx context.Context, ce
 
 	return issuer, nil
 
-}
-
-// certificateFromRequest returns the Certificate object associated with that CertificateRequest
-func (r *CertificateRequestReconciler) certificateFromRequest(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (*cmapi.Certificate, error) {
-	certificateName := types.NamespacedName{
-		Namespace: certificateRequest.Namespace,
-		Name:      certificateRequest.Annotations["cert-manager.io/certificate-name"],
-	}
-
-	var certificate cmapi.Certificate
-	err := r.Get(ctx, certificateName, &certificate)
-
-	return &certificate, err
 }
 
 func (r *CertificateRequestReconciler) ingressFromCertificate(ctx context.Context, certificate *cmapi.Certificate) (*v1.Ingress, error) {

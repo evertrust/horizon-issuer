@@ -12,28 +12,29 @@ import (
 	"github.com/evertrust/horizon-go/rfc5280"
 	"github.com/evertrust/horizon-issuer/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 )
 
 const IssuerNamespace = "horizon.evertrust.io"
 const (
-	RequestIdAnnotation = IssuerNamespace + "/request-id"
-	OwnerAnnotation     = IssuerNamespace + "/owner"
-	TeamAnnotation      = IssuerNamespace + "/team"
+	RequestIdAnnotation         = IssuerNamespace + "/request-id"
+	CertificateIdAnnotation     = IssuerNamespace + "/certificate-id"
+	LastCertificateIdAnnotation = IssuerNamespace + "/last-certificate-id"
+	OwnerAnnotation             = IssuerNamespace + "/owner"
+	TeamAnnotation              = IssuerNamespace + "/team"
 )
 
 type HorizonIssuer struct {
 	Client horizon.Horizon
 }
 
-// SubmitRequest is used to initially submit a decentralized enrollement request
+// SubmitEnrollRequest is used to initially submit a decentralized enrollement request
 // to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
 // and sets an annotation on the CertificateRequest object to ensure it is not run again.
-func (r *HorizonIssuer) SubmitRequest(ctx context.Context, c client.Client, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
-	logger.Info(fmt.Sprintf("Submitting request %s to profile %s", certificateRequest.UID, issuer.Profile))
+	logger.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
 	request, err := r.Client.Requests.DecentralizedEnroll(
 		issuer.Profile,
 		certificateRequest.Spec.Request,
@@ -53,7 +54,33 @@ func (r *HorizonIssuer) SubmitRequest(ctx context.Context, c client.Client, issu
 		cmapi.CertificateRequestConditionReady,
 		cmmeta.ConditionFalse,
 		cmapi.CertificateRequestReasonPending,
-		"Submitted request to Horizon",
+		"Submitted enrollment request to Horizon",
+	)
+
+	return ctrl.Result{}, nil
+}
+
+func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1alpha1.IssuerSpec, certificateRequest *cmapi.CertificateRequest, lastCertificateId string) (result ctrl.Result, err error) {
+	logger := ctrl.LoggerFrom(ctx)
+
+	logger.Info(fmt.Sprintf("Submitting renewal request %s to profile %s", certificateRequest.UID, issuer.Profile))
+	request, err := r.Client.Requests.DecentralizedRenew(
+		certificateRequest.Spec.Request,
+		lastCertificateId,
+	)
+	if err != nil {
+		return r.handleFailedRequest(certificateRequest, err)
+	}
+
+	// Update the request with the Horizon request ID
+	certificateRequest.Annotations[RequestIdAnnotation] = request.Id
+
+	cmutil.SetCertificateRequestCondition(
+		certificateRequest,
+		cmapi.CertificateRequestConditionReady,
+		cmmeta.ConditionFalse,
+		cmapi.CertificateRequestReasonPending,
+		"Submitted renewal request to Horizon",
 	)
 
 	return ctrl.Result{}, nil
@@ -88,7 +115,6 @@ func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateReques
 	logger.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
 	_, err := r.Client.Requests.Revoke(string(certificateRequest.Status.Certificate), "UNSPECIFIED")
 	return err
-
 }
 
 func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
@@ -143,6 +169,7 @@ func (r *HorizonIssuer) handleCompletedRequest(request *requests.HorizonRequest,
 			certificateRequest.Status.CA = []byte(ca)
 		}
 		if certificate != "" {
+			certificateRequest.Annotations[CertificateIdAnnotation] = request.Certificate.Id
 			certificateRequest.Status.Certificate = []byte(certificate)
 			cmutil.SetCertificateRequestCondition(
 				certificateRequest,
