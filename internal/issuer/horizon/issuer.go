@@ -22,6 +22,7 @@ const (
 	LastCertificateIdAnnotation = IssuerNamespace + "/last-certificate-id"
 	OwnerAnnotation             = IssuerNamespace + "/owner"
 	TeamAnnotation              = IssuerNamespace + "/team"
+	ContactEmailAnnotation      = IssuerNamespace + "/contact-email"
 )
 
 type HorizonIssuer struct {
@@ -31,7 +32,7 @@ type HorizonIssuer struct {
 // SubmitEnrollRequest is used to initially submit a decentralized enrollement request
 // to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
 // and sets an annotation on the CertificateRequest object to ensure it is not run again.
-func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
@@ -41,6 +42,7 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1alpha1
 		labels,
 		owner,
 		team,
+		contactEmail,
 	)
 	if err != nil {
 		return r.handleFailedRequest(certificateRequest, err)

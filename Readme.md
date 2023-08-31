@@ -104,8 +104,14 @@ metadata at three levels :
 You may use the following annotations on ingresses that will be reflected onto the enrolled certificate :
 
 ```yaml
-horizon.evertrust.io/owner: owner-name
-horizon.evertrust.io/team: team-name
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-name
+  annotations:
+    horizon.evertrust.io/owner: owner-name
+    horizon.evertrust.io/team: team-name
+    horizon.evertrust.io/labels.label-name: label-value
 ```
 
 #### On a certificate object
@@ -114,8 +120,14 @@ You may use the following annotations on the cert-manager `Certificate` object, 
 certificate :
 
 ```yaml
-horizon.evertrust.io/owner: owner-name
-horizon.evertrust.io/team: team-name
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-name
+  annotations:
+    horizon.evertrust.io/owner: owner-name
+    horizon.evertrust.io/team: team-name
+    horizon.evertrust.io/labels.label-name: label-value
 ```
 
 These values, if set, will take precedence over annotations on an `Ingress` object.
@@ -132,7 +144,7 @@ spec:
   owner: owner-name
   team: team-name
   labels:
-    label-key: label-value
+    label-name: label-value
 ```
 
 These values, if set, will take precedence over annotations on an `Ingress` or `Certificate` object.

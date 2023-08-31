@@ -18,9 +18,9 @@ func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][
 	username := string(secretData["username"])
 	password := string(secretData["password"])
 	client.Init(nil)
-	client.Http.SetBaseUrl(*baseUrl)
+	client.Http.WithBaseUrl(*baseUrl)
 
-	client.Http.InitPasswordAuth(username, password)
+	client.Http.WithPasswordAuth(username, password)
 
 	if issuerSpec.CaBundle != nil {
 		client.Http.SetCaBundle(*issuerSpec.CaBundle)

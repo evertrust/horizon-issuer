@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/cert-manager/cert-manager v1.9.1
-	github.com/evertrust/horizon-go v0.0.5-0.20230315171537-908ec8b6733e
+	github.com/evertrust/horizon-go v0.0.5-0.20230831133831-fd867a893a15
 	k8s.io/api v0.24.3
 	k8s.io/apimachinery v0.24.3
 	k8s.io/client-go v0.24.3

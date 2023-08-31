@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"time"
 
 	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
@@ -295,11 +296,11 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 				return r.Issuer.SubmitRenewRequest(ctx, *issuerSpec, &certificateRequest, certificate.Annotations[horizonissuer.LastCertificateIdAnnotation])
 			} else {
 				// Else, we consider this a new certificate and submit an enroll request
-				labels, owner, team, err := r.certificateMetadata(ctx, &certificateRequest)
+				labels, owner, team, contactEmail, err := r.certificateMetadata(ctx, &certificateRequest)
 				if err != nil {
 					setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
 				}
-				return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, &certificateRequest)
+				return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, contactEmail, &certificateRequest)
 			}
 		}
 	}
@@ -327,70 +328,82 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 	return nil
 }
 
-func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, error) {
+func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, *string, error) {
 	// Récupérer le certificat
-	var owner *string
-	var team *string
-	var labels []requests.LabelElement
+	var owner string
+	var team string
+	var contactEmail string
+	var labels map[string]string = make(map[string]string)
 
 	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	issuer, err := r.issuerFromRequest(ctx, certificateRequest)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	ingress, err := r.ingressFromCertificate(ctx, certificate)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
+	var annotations map[string]string
+
+	// Get the annotations from the Ingress first
 	if ingress != nil {
-		ownerString := ingress.Annotations[horizonissuer.OwnerAnnotation]
-		if ownerString != "" {
-			owner = &ownerString
-		}
-		teamString := ingress.Annotations[horizonissuer.TeamAnnotation]
-		if teamString != "" {
-			owner = &teamString
-		}
+		annotations = ingress.GetObjectMeta().GetAnnotations()
 	}
 
 	if certificate != nil {
-		ownerString := certificate.Annotations[horizonissuer.OwnerAnnotation]
-		if ownerString != "" {
-			owner = &ownerString
-		}
-		teamString := certificate.Annotations[horizonissuer.TeamAnnotation]
-		if teamString != "" {
-			owner = &teamString
+		annotations = certificate.GetObjectMeta().GetAnnotations()
+	}
+
+	for k, v := range annotations {
+		switch k {
+		case horizonissuer.OwnerAnnotation:
+			owner = v
+		case horizonissuer.TeamAnnotation:
+			team = v
+		case horizonissuer.ContactEmailAnnotation:
+			contactEmail = v
+		default:
+			if strings.HasPrefix(k, "horizon.evertrust.io/labels.") {
+				labels[strings.TrimPrefix(k, "horizon.evertrust.io/labels.")] = v
+			}
 		}
 	}
 
 	issuerSpec, _, err := issuerutil.GetSpecAndStatus(issuer)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	if issuerSpec.Owner != nil {
-		owner = issuerSpec.Owner
+		owner = *issuerSpec.Owner
 	}
 
 	if issuerSpec.Team != nil {
-		team = issuerSpec.Team
+		team = *issuerSpec.Team
 	}
 
 	if len(issuerSpec.Labels) > 0 {
+		// Override labels with those from the issuer
 		for k, v := range issuerSpec.Labels {
-			labels = append(labels, requests.LabelElement{
-				Label: k,
-				Value: v,
-			})
+			labels[k] = v
 		}
 	}
 
-	return labels, owner, team, nil
+	// Convert labels to LabelElements for Horizon
+	var labelElements []requests.LabelElement
+	for k, v := range labels {
+		labelElements = append(labelElements, requests.LabelElement{
+			Label: k,
+			Value: v,
+		})
+	}
+
+	return labelElements, &owner, &team, &contactEmail, nil
 }
 
 // issuerFromRequest returns the Issuer of a given CertificateRequest.
