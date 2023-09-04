@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 )
 
 func GetSpecAndStatus(issuer client.Object) (*horizonapi.IssuerSpec, *horizonapi.IssuerStatus, error) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/rfc5280"
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"net/url"
 )
 

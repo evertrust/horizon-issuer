@@ -25,7 +25,7 @@ import (
 	"github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	"github.com/evertrust/horizon-issuer/internal/version"
 	"io/ioutil"
-	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/utils/clock"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"time"
@@ -34,7 +34,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"

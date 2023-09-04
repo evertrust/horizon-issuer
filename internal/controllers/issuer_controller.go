@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"

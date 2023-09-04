@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,21 +54,34 @@ type IssuerSpec struct {
 	// +optional
 	RevokeCertificates bool `json:"revokeCertificates"`
 
-	// Labels is a map of labels that will override labels
-	// set at the Certificate or Ingress levels.
-	Labels map[string]string `json:"labels,omitempty"`
+	// DefaultTemplate is the default template that will be used to
+	// issue certificates. Values specified here will not override any
+	// values set in the Certificate or Issuer objects.
+	DefaultTemplate *IssuerTemplate `json:"defaultTemplate,omitempty"`
 
-	// Owner will override the owner value set
-	// at the Certificate or Ingress levels.
-	Owner *string `json:"owner,omitempty"`
-
-	// Team will override the team value set
-	// at the Certificate or Ingress levels.
-	Team *string `json:"team,omitempty"`
+	// OverrideTemplate is the enforced template that will be used to
+	// issue certificates. Values specified here will override any values
+	// set in the Certificate or Issuer objects.
+	OverrideTemplate *IssuerTemplate `json:"overrideTemplate,omitempty"`
 
 	// DnsChecker indicates that the issuer should
 	// validate that the DNS record associated with a certificate
 	DnsChecker *IssuerDnsChecker `json:"dnsChecker,omitempty"`
+}
+
+type IssuerTemplate struct {
+	// Labels is a map of labels that that
+	// will be attached to issued certificates.
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Owner will set the certificate ownership to the given value.
+	Owner *string `json:"owner,omitempty"`
+
+	// Team will set the certificate ownership to the given team.
+	Team *string `json:"team,omitempty"`
+
+	// ContactEmail will set the contact email for the certificate.
+	ContactEmail *string `json:"contactEmail,omitempty"`
 }
 
 type IssuerDnsChecker struct {
@@ -86,7 +99,7 @@ type IssuerStatus struct {
 // Issuer is the Schema for the issuers API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
 // +kubebuilder:printcolumn:name="Horizon URL",type=string,JSONPath=`.spec.url`
 // +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.authSecretName`

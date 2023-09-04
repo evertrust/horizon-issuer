@@ -36,13 +36,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 )
@@ -329,12 +329,6 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 }
 
 func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, *string, error) {
-	// Récupérer le certificat
-	var owner string
-	var team string
-	var contactEmail string
-	var labels map[string]string = make(map[string]string)
-
 	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -346,6 +340,33 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 	ingress, err := r.ingressFromCertificate(ctx, certificate)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+	issuerSpec, _, err := issuerutil.GetSpecAndStatus(issuer)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	var owner, team, contactEmail string
+	var ownerPtr, teamPtr, contactEmailPtr *string = nil, nil, nil
+	var labels map[string]string = make(map[string]string)
+
+	// Get default values from DefaultTemplate if it exists
+	if issuerSpec.DefaultTemplate != nil {
+		if issuerSpec.DefaultTemplate.Owner != nil {
+			owner = *issuerSpec.DefaultTemplate.Owner
+		}
+		if issuerSpec.DefaultTemplate.Team != nil {
+			team = *issuerSpec.DefaultTemplate.Team
+		}
+		if issuerSpec.DefaultTemplate.ContactEmail != nil {
+			contactEmail = *issuerSpec.DefaultTemplate.ContactEmail
+		}
+		if len(issuerSpec.DefaultTemplate.Labels) > 0 {
+			// Override labels with those from the issuer
+			for k, v := range issuerSpec.DefaultTemplate.Labels {
+				labels[k] = v
+			}
+		}
 	}
 
 	var annotations map[string]string
@@ -374,23 +395,21 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 		}
 	}
 
-	issuerSpec, _, err := issuerutil.GetSpecAndStatus(issuer)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	if issuerSpec.Owner != nil {
-		owner = *issuerSpec.Owner
-	}
-
-	if issuerSpec.Team != nil {
-		team = *issuerSpec.Team
-	}
-
-	if len(issuerSpec.Labels) > 0 {
-		// Override labels with those from the issuer
-		for k, v := range issuerSpec.Labels {
-			labels[k] = v
+	if issuerSpec.OverrideTemplate != nil {
+		if issuerSpec.OverrideTemplate.Owner != nil {
+			owner = *issuerSpec.OverrideTemplate.Owner
+		}
+		if issuerSpec.OverrideTemplate.Team != nil {
+			team = *issuerSpec.OverrideTemplate.Team
+		}
+		if issuerSpec.OverrideTemplate.ContactEmail != nil {
+			contactEmail = *issuerSpec.OverrideTemplate.ContactEmail
+		}
+		if len(issuerSpec.OverrideTemplate.Labels) > 0 {
+			// Override labels with those from the issuer
+			for k, v := range issuerSpec.OverrideTemplate.Labels {
+				labels[k] = v
+			}
 		}
 	}
 
@@ -403,7 +422,18 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 		})
 	}
 
-	return labelElements, &owner, &team, &contactEmail, nil
+	// Send nil instead of an empty string if the value is not set
+	if owner != "" {
+		ownerPtr = &owner
+	}
+	if team != "" {
+		teamPtr = &team
+	}
+	if contactEmail != "" {
+		contactEmailPtr = &contactEmail
+	}
+
+	return labelElements, ownerPtr, teamPtr, contactEmailPtr, nil
 }
 
 // issuerFromRequest returns the Issuer of a given CertificateRequest.

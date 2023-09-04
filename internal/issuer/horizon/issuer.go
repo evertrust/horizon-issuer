@@ -10,7 +10,7 @@ import (
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/requests"
 	"github.com/evertrust/horizon-go/rfc5280"
-	"github.com/evertrust/horizon-issuer/api/v1alpha1"
+	"github.com/evertrust/horizon-issuer/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"time"
 )
@@ -32,7 +32,7 @@ type HorizonIssuer struct {
 // SubmitEnrollRequest is used to initially submit a decentralized enrollement request
 // to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
 // and sets an annotation on the CertificateRequest object to ensure it is not run again.
-func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1alpha1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
@@ -62,7 +62,7 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1alpha1
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1alpha1.IssuerSpec, certificateRequest *cmapi.CertificateRequest, lastCertificateId string) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.IssuerSpec, certificateRequest *cmapi.CertificateRequest, lastCertificateId string) (result ctrl.Result, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Submitting renewal request %s to profile %s", certificateRequest.UID, issuer.Profile))

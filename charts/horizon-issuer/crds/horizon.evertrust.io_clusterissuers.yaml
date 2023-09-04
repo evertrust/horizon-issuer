@@ -1,11 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.7.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.12.0
   name: clusterissuers.horizon.evertrust.io
 spec:
   group: horizon.evertrust.io
@@ -149,12 +147,174 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .spec.profile
+      name: Profile
+      type: string
+    - jsonPath: .spec.url
+      name: Horizon URL
+      type: string
+    - jsonPath: .spec.authSecretName
+      name: Secret
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: ClusterIssuer is the Schema for the clusterissuers API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: IssuerSpec defines the desired state of Issuer
+            properties:
+              authSecretName:
+                description: A reference to a Secret in the same namespace as the
+                  referent. If the referent is a ClusterIssuer, the reference instead
+                  refers to the resource with the given name in the configured 'cluster
+                  resource namespace', which is set as a flag on the controller component
+                  (and defaults to the namespace that the controller runs in).
+                type: string
+              caBundle:
+                description: CaBundle contains the CA bundle required to trust the
+                  Horizon endpoint certificate
+                type: string
+              defaultTemplate:
+                description: DefaultTemplate is the default template that will be
+                  used to issue certificates. Values specified here will not override
+                  any values set in the Certificate or Issuer objects.
+                properties:
+                  contactEmail:
+                    description: ContactEmail will set the contact email for the certificate.
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels is a map of labels that that will be attached
+                      to issued certificates.
+                    type: object
+                  owner:
+                    description: Owner will set the certificate ownership to the given
+                      value.
+                    type: string
+                  team:
+                    description: Team will set the certificate ownership to the given
+                      team.
+                    type: string
+                type: object
+              dnsChecker:
+                description: DnsChecker indicates that the issuer should validate
+                  that the DNS record associated with a certificate
+                properties:
+                  server:
+                    type: string
+                required:
+                - server
+                type: object
+              overrideTemplate:
+                description: OverrideTemplate is the enforced template that will be
+                  used to issue certificates. Values specified here will override
+                  any values set in the Certificate or Issuer objects.
+                properties:
+                  contactEmail:
+                    description: ContactEmail will set the contact email for the certificate.
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels is a map of labels that that will be attached
+                      to issued certificates.
+                    type: object
+                  owner:
+                    description: Owner will set the certificate ownership to the given
+                      value.
+                    type: string
+                  team:
+                    description: Team will set the certificate ownership to the given
+                      team.
+                    type: string
+                type: object
+              profile:
+                description: The Horizon Profile that will be used to enroll certificates.
+                  Your authenticated principal should have rights over this Profile.
+                type: string
+              revokeCertificates:
+                default: false
+                description: RevokeCertificates controls whether this issuer should
+                  revoke certificates that have been issued through it when their
+                  Kubernetes object is deleted.
+                type: boolean
+              skipTLSVerify:
+                default: false
+                description: SkipTLSVerify indicates if untrusted certificates should
+                  be allowed when connecting to the Horizon instance.
+                type: boolean
+              url:
+                description: 'URL is the base URL of your Horizon instance, for instance:
+                  "https://horizon.yourcompany.com".'
+                type: string
+            required:
+            - authSecretName
+            - profile
+            - url
+            type: object
+          status:
+            description: IssuerStatus defines the observed state of Issuer
+            properties:
+              conditions:
+                description: List of status conditions to indicate the status of a
+                  CertificateRequest. Known condition types are `Ready`.
+                items:
+                  description: IssuerCondition contains condition information for
+                    an Issuer.
+                  properties:
+                    lastTransitionTime:
+                      description: LastTransitionTime is the timestamp corresponding
+                        to the last status change of this condition.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Message is a human readable description of the
+                        details of the last transition, complementing reason.
+                      type: string
+                    reason:
+                      description: Reason is a brief machine readable explanation
+                        for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status of the condition, one of ('True', 'False',
+                        'Unknown').
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: Type of the condition, known values are ('Ready').
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []
