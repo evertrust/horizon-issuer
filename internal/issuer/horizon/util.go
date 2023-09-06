@@ -7,22 +7,28 @@ import (
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/rfc5280"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
+	"github.com/go-logr/logr"
 	"gopkg.in/resty.v1"
 	"net/url"
 )
 
-func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
+func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
 	client := new(horizon.Horizon)
 
-	var tlsConfig = &tls.Config{
-		InsecureSkipVerify: issuerSpec.SkipTLSVerify,
+	tlsConfig := &tls.Config{}
+	if issuerSpec.SkipTLSVerify {
+		log.Info("Skipping TLS verification. Not recommended in production.")
+		tlsConfig.InsecureSkipVerify = true
 	}
 	if issuerSpec.CaBundle != nil {
+		log.V(1).Info(fmt.Sprintf("Adding custom CA bundle to trust store: %q", *issuerSpec.CaBundle))
 		tlsConfig.RootCAs = x509.NewCertPool()
-		tlsConfig.RootCAs.AppendCertsFromPEM([]byte(*issuerSpec.CaBundle))
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(*issuerSpec.CaBundle))
+		if !ok {
+			return nil, fmt.Errorf("failed to parse root certificate")
+		}
 	}
-	var restyClient = resty.New().SetTLSClientConfig(tlsConfig)
-	client.Init(restyClient)
+	client.Init(resty.New().SetTLSClientConfig(tlsConfig))
 
 	baseUrl, err := url.Parse(issuerSpec.URL)
 	if err != nil {

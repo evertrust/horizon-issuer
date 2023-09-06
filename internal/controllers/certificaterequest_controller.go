@@ -138,7 +138,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// From here, we're ready to instantiate a Horizon client
-	clientFromIssuer, err := horizonissuer.ClientFromIssuer(issuerSpec, secret.Data)
+	clientFromIssuer, err := horizonissuer.ClientFromIssuer(log, issuerSpec, secret.Data)
 	if err != nil || clientFromIssuer == nil {
 		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}

@@ -121,7 +121,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	log.V(1).Info("Starting health check")
-	checker, err := r.HealthCheckerBuilder(issuerSpec, secret.Data)
+	checker, err := r.HealthCheckerBuilder(log, issuerSpec, secret.Data)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerBuilder, err)
 	}
