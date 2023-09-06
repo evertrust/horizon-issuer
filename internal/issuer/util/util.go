@@ -17,12 +17,14 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"fmt"
-
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 )
 
 func GetSpecAndStatus(issuer client.Object) (*horizonapi.IssuerSpec, *horizonapi.IssuerStatus, error) {
@@ -34,6 +36,19 @@ func GetSpecAndStatus(issuer client.Object) (*horizonapi.IssuerSpec, *horizonapi
 	default:
 		return nil, nil, fmt.Errorf("not an issuer type: %t", t)
 	}
+}
+
+// CertificateFromRequest returns the Certificate object associated with that CertificateRequest
+func CertificateFromRequest(client client.Client, ctx context.Context, certificateRequest *cmapi.CertificateRequest) (*cmapi.Certificate, error) {
+	certificateName := types.NamespacedName{
+		Namespace: certificateRequest.Namespace,
+		Name:      certificateRequest.Annotations["cert-manager.io/certificate-name"],
+	}
+
+	var certificate cmapi.Certificate
+	err := client.Get(ctx, certificateName, &certificate)
+
+	return &certificate, err
 }
 
 func SetReadyCondition(status *horizonapi.IssuerStatus, conditionStatus horizonapi.ConditionStatus, reason, message string) {

@@ -1,8 +1,0 @@
-apiVersion: horizon.evertrust.io/v1alpha1
-kind: Issuer
-metadata:
-  name: issuer-sample
-spec:
-  url: https://horizon-qa.evertrust.io
-  authSecretName: issuer-sample-credentials
-  profile: IssuerProfile

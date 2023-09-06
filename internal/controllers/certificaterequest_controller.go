@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"time"
 
 	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
@@ -35,13 +36,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/clock"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 )
@@ -137,7 +138,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// From here, we're ready to instantiate a Horizon client
-	clientFromIssuer, err := horizonissuer.ClientFromIssuer(issuerSpec, secret.Data)
+	clientFromIssuer, err := horizonissuer.ClientFromIssuer(log, issuerSpec, secret.Data)
 	if err != nil || clientFromIssuer == nil {
 		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}
@@ -207,7 +208,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 		}
 
-		var updateErr error
+		var updateErr, parentUpdateErr error
 
 		// if annotations changed we have to call .Update() and not .UpdateStatus()
 		if !reflect.DeepEqual(certificateRequestCopy.Annotations, certificateRequest.Annotations) {
@@ -216,8 +217,18 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			updateErr = r.Status().Update(ctx, &certificateRequest)
 		}
 
+		// if CertificateIdAnnotation was set, we should update the parent Certificate object with the annotation
+		if certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation] != "" {
+			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
+			if err != nil {
+				log.Error(err, "Unable to get the Certificate object. Ignoring.")
+			}
+			certificate.Annotations[horizonissuer.LastCertificateIdAnnotation] = certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation]
+			parentUpdateErr = r.Update(ctx, certificate)
+		}
+
 		if updateErr != nil {
-			err = utilerrors.NewAggregate([]error{err, updateErr})
+			err = utilerrors.NewAggregate([]error{err, updateErr, parentUpdateErr})
 			result = ctrl.Result{}
 		}
 	}()
@@ -272,11 +283,25 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
 			return r.Issuer.UpdateRequest(ctx, &certificateRequest)
 		} else {
-			labels, owner, team, err := r.certificateMetadata(ctx, &certificateRequest)
+			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
 			if err != nil {
-				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+				return ctrl.Result{}, fmt.Errorf("%w", err)
 			}
-			return r.Issuer.SubmitRequest(ctx, r.Client, *issuerSpec, labels, owner, team, &certificateRequest)
+			parentIssuingReason := cmutil.GetCertificateCondition(certificate, cmapi.CertificateConditionIssuing).Reason
+			// If the parent certificate already has a CertificateIdAnnotation, we should submit a renew request
+			shoudlRenew := metav1.HasAnnotation(certificate.ObjectMeta, horizonissuer.LastCertificateIdAnnotation) &&
+				(parentIssuingReason == "ManuallyTriggered" || parentIssuingReason == "Renewing" || parentIssuingReason == "Expired")
+
+			if shoudlRenew {
+				return r.Issuer.SubmitRenewRequest(ctx, *issuerSpec, &certificateRequest, certificate.Annotations[horizonissuer.LastCertificateIdAnnotation])
+			} else {
+				// Else, we consider this a new certificate and submit an enroll request
+				labels, owner, team, contactEmail, err := r.certificateMetadata(ctx, &certificateRequest)
+				if err != nil {
+					setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
+				}
+				return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, contactEmail, &certificateRequest)
+			}
 		}
 	}
 
@@ -303,70 +328,112 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 	return nil
 }
 
-func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, error) {
-	// Récupérer le certificat
-	var owner *string
-	var team *string
-	var labels []requests.LabelElement
-
-	certificate, err := r.certificateFromRequest(ctx, certificateRequest)
+func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, *string, error) {
+	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	issuer, err := r.issuerFromRequest(ctx, certificateRequest)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	ingress, err := r.ingressFromCertificate(ctx, certificate)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
+	}
+	issuerSpec, _, err := issuerutil.GetSpecAndStatus(issuer)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 
+	var owner, team, contactEmail string
+	var ownerPtr, teamPtr, contactEmailPtr *string = nil, nil, nil
+	var labels map[string]string = make(map[string]string)
+
+	// Get default values from DefaultTemplate if it exists
+	if issuerSpec.DefaultTemplate != nil {
+		if issuerSpec.DefaultTemplate.Owner != nil {
+			owner = *issuerSpec.DefaultTemplate.Owner
+		}
+		if issuerSpec.DefaultTemplate.Team != nil {
+			team = *issuerSpec.DefaultTemplate.Team
+		}
+		if issuerSpec.DefaultTemplate.ContactEmail != nil {
+			contactEmail = *issuerSpec.DefaultTemplate.ContactEmail
+		}
+		if len(issuerSpec.DefaultTemplate.Labels) > 0 {
+			// Override labels with those from the issuer
+			for k, v := range issuerSpec.DefaultTemplate.Labels {
+				labels[k] = v
+			}
+		}
+	}
+
+	var annotations map[string]string
+
+	// Get the annotations from the Ingress first
 	if ingress != nil {
-		ownerString := ingress.Annotations[horizonissuer.OwnerAnnotation]
-		if ownerString != "" {
-			owner = &ownerString
-		}
-		teamString := ingress.Annotations[horizonissuer.TeamAnnotation]
-		if teamString != "" {
-			owner = &teamString
-		}
+		annotations = ingress.GetObjectMeta().GetAnnotations()
 	}
 
 	if certificate != nil {
-		ownerString := certificate.Annotations[horizonissuer.OwnerAnnotation]
-		if ownerString != "" {
-			owner = &ownerString
-		}
-		teamString := certificate.Annotations[horizonissuer.TeamAnnotation]
-		if teamString != "" {
-			owner = &teamString
-		}
+		annotations = certificate.GetObjectMeta().GetAnnotations()
 	}
 
-	issuerSpec, _, err := issuerutil.GetSpecAndStatus(issuer)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	if issuerSpec.Owner != nil {
-		owner = issuerSpec.Owner
-	}
-
-	if issuerSpec.Team != nil {
-		team = issuerSpec.Team
-	}
-
-	if len(issuerSpec.Labels) > 0 {
-		for k, v := range issuerSpec.Labels {
-			labels = append(labels, requests.LabelElement{
-				Label: k,
-				Value: v,
-			})
+	for k, v := range annotations {
+		switch k {
+		case horizonissuer.OwnerAnnotation:
+			owner = v
+		case horizonissuer.TeamAnnotation:
+			team = v
+		case horizonissuer.ContactEmailAnnotation:
+			contactEmail = v
+		default:
+			if strings.HasPrefix(k, "horizon.evertrust.io/labels.") {
+				labels[strings.TrimPrefix(k, "horizon.evertrust.io/labels.")] = v
+			}
 		}
 	}
 
-	return labels, owner, team, nil
+	if issuerSpec.OverrideTemplate != nil {
+		if issuerSpec.OverrideTemplate.Owner != nil {
+			owner = *issuerSpec.OverrideTemplate.Owner
+		}
+		if issuerSpec.OverrideTemplate.Team != nil {
+			team = *issuerSpec.OverrideTemplate.Team
+		}
+		if issuerSpec.OverrideTemplate.ContactEmail != nil {
+			contactEmail = *issuerSpec.OverrideTemplate.ContactEmail
+		}
+		if len(issuerSpec.OverrideTemplate.Labels) > 0 {
+			// Override labels with those from the issuer
+			for k, v := range issuerSpec.OverrideTemplate.Labels {
+				labels[k] = v
+			}
+		}
+	}
+
+	// Convert labels to LabelElements for Horizon
+	var labelElements []requests.LabelElement
+	for k, v := range labels {
+		labelElements = append(labelElements, requests.LabelElement{
+			Label: k,
+			Value: v,
+		})
+	}
+
+	// Send nil instead of an empty string if the value is not set
+	if owner != "" {
+		ownerPtr = &owner
+	}
+	if team != "" {
+		teamPtr = &team
+	}
+	if contactEmail != "" {
+		contactEmailPtr = &contactEmail
+	}
+
+	return labelElements, ownerPtr, teamPtr, contactEmailPtr, nil
 }
 
 // issuerFromRequest returns the Issuer of a given CertificateRequest.
@@ -398,19 +465,6 @@ func (r *CertificateRequestReconciler) issuerFromRequest(ctx context.Context, ce
 
 	return issuer, nil
 
-}
-
-// certificateFromRequest returns the Certificate object associated with that CertificateRequest
-func (r *CertificateRequestReconciler) certificateFromRequest(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (*cmapi.Certificate, error) {
-	certificateName := types.NamespacedName{
-		Namespace: certificateRequest.Namespace,
-		Name:      certificateRequest.Annotations["cert-manager.io/certificate-name"],
-	}
-
-	var certificate cmapi.Certificate
-	err := r.Get(ctx, certificateName, &certificate)
-
-	return &certificate, err
 }
 
 func (r *CertificateRequestReconciler) ingressFromCertificate(ctx context.Context, certificate *cmapi.Certificate) (*v1.Ingress, error) {

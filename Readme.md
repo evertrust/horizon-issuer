@@ -4,10 +4,15 @@
 
 ## Prerequisites
 
-This software has been testing against the following environment :
+Before installing, ensure the following prerequisites are met :
+- This software requires Kubernetes version 1.22 and above.
+- cert-manager must be installed in your cluster prior to installing this chart.
+- The following compatibility matrix applies for Horizon versions :
 
-- Horizon version 2.2.0 and above
-- Kubernetes version 1.22 and above
+| Issuer version | Horizon version |
+|----------------|-----------------|
+| 0.1.x          | 2.2.x /2.3.x    |
+| 0.2.x          | 2.4.x           |
 
 ## Installation
 
@@ -39,12 +44,13 @@ kubectl create secret generic horizon-credentials \
  --from-literal=username=<horizon username> \
  --from-literal=password=<horizon password>
 ```
+
 These credentials should be grant the ability to enroll certificates on a WebRA profile.
 
 Then, create an `Issuer` or `ClusterIssuer` object depending on the scope you want to issue certificates on :
 
 ```yaml
-apiVersion: horizon.evertrust.io/v1alpha1
+apiVersion: horizon.evertrust.io/v1beta1
 kind: ClusterIssuer
 metadata:
   name: horizon-clusterissuer
@@ -53,6 +59,7 @@ spec:
   authSecretName: horizon-credentials
   profile: IssuerProfile
 ```
+
 This object spec references the credentials secret we just created.
 
 ### Issuing certificates
@@ -94,45 +101,74 @@ metadata:
 > **Warning** : be sure to set the `cert-manager.io/common-name` annotation as by default, ingress-shim will generate
 > certificates without any DN. This will cause errors on Horizon's side.
 
-### Using labels, owners and teams
+### Configure labels and certificate ownership
 
 Horizon offers useful features to categorize and better understand your certificates through metadata. You may specify
-metadata at three levels :
+metadata at multiple levels. Values get overridden in the following order of precedence:
 
-#### On an ingress object
+1. Values set in the `defaultTemplate` object on an `Issuer` or `ClusterIssuer` object
+2. Values set on annotations either on the `Ingress` or `Certificate` object
+3. Values set in the `overrideTemplate` of an `Issuer` or `ClusterIssuer` object
+
+#### Using `defaultTemplate` on an issuer
+
+Default templates allows you to set default values for your certificates.
+These values will be used if no other value is set by the user on the resource they are issuing.
+On the `Issuer` or `ClusterIssuer` object, add the following key :
+
+```yaml
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
+spec:
+  profile: IssuerProfile
+  url: https://you.evertrust.io
+  defaultTemplate:
+    owner: owner-name
+    team: team-name
+    contactEmail: owner-email@company.com
+    labels:
+      label-name1: label-value1
+  authSecretName: horizon-credentials
+```
+
+#### On an `Ingress` or `Certificate` object
 
 You may use the following annotations on ingresses that will be reflected onto the enrolled certificate :
 
 ```yaml
-horizon.evertrust.io/owner: owner-name
-horizon.evertrust.io/team: team-name
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-name
+  annotations:
+    horizon.evertrust.io/owner: owner-name
+    horizon.evertrust.io/team: team-name
+    horizon.evertrust.io/contact-email: owner-email@company.com
+    horizon.evertrust.io/labels.label-name1: label-value1
+    horizon.evertrust.io/labels.label-name2: label-value2
 ```
 
-#### On a certificate object
+These values, if set, will take precedence over annotations on values set in the `defaultTemplate` key of the issuer.
 
-You may use the following annotations on the cert-manager `Certificate` object, that will be reflected onto the enrolled
-certificate :
+#### Using `overrideTemplate` on an issuer
 
-```yaml
-horizon.evertrust.io/owner: owner-name
-horizon.evertrust.io/team: team-name
-```
-
-These values, if set, will take precedence over annotations on an `Ingress` object.
-
-#### On a `ClusterIssuer` or `Issuer` object
-
-You may configure your issuer to apply certain metadata to every certificate enrolled through it, by modifying its spec.
-The following keys are available :
+You may also want to ensure certain values are set on every certificate issued by a specific issuer.
+This can be done using the `overrideTemplate` key on an `Issuer` or `ClusterIssuer` object. These values will take
+precedence over any other value set on the issuer or on the resource being issued:
 
 ```yaml
-apiVersion: horizon.evertrust.io/v1alpha1
+apiVersion: horizon.evertrust.io/v1beta1
 kind: ClusterIssuer
 spec:
-  owner: owner-name
-  team: team-name
-  labels:
-    label-key: label-value
+  profile: IssuerProfile
+  url: https://you.evertrust.io
+  overrideTemplate:
+    owner: owner-name
+    team: team-name
+    contactEmail: owner-email@company.com
+    labels:
+      label-name1: label-value1
+  authSecretName: horizon-credentials
 ```
 
 These values, if set, will take precedence over annotations on an `Ingress` or `Certificate` object.
@@ -148,7 +184,7 @@ verification by setting `skipTLSVerify` to `true`, this is however highly discou
 Example :
 
 ```yaml
-apiVersion: horizon.evertrust.io/v1alpha1
+apiVersion: horizon.evertrust.io/v1beta1
 kind: ClusterIssuer
 spec:
   caBundle: |
@@ -181,3 +217,25 @@ spec:
   dnsChecker:
     server: 8.8.8.8:53
 ```
+
+## Migration
+
+### Migrating from v0.1.0 to v0.2.0
+
+In 0.2.0, the new CRD version is `v1beta1`, and `v1alpha1` is no longer supported. To migrate from the old version, you
+must first upgrade the CRDs:
+
+```shell
+kubectl apply -f https://raw.githubusercontent.com/EverTrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_clusterissuers.yaml
+kubectl apply -f https://raw.githubusercontent.com/EverTrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_issuers.yaml
+```
+
+This will not delete your existing `Issuer` and `ClusterIssuer` objects, but will allow you to create resources with the
+new `v1beta1` version.
+After having re-created your issuer objects, you can start the upgrade using Helm :
+
+```shell
+helm upgrade horizon-issuer evertrust/horizon-issuer
+```
+
+And safely delete the old issuers.

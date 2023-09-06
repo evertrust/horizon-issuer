@@ -1,15 +1,34 @@
 package horizon
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/rfc5280"
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
+	"github.com/go-logr/logr"
+	"gopkg.in/resty.v1"
 	"net/url"
 )
 
-func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
+func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
 	client := new(horizon.Horizon)
+
+	tlsConfig := &tls.Config{}
+	if issuerSpec.SkipTLSVerify {
+		log.Info("Skipping TLS verification. Not recommended in production.")
+		tlsConfig.InsecureSkipVerify = true
+	}
+	if issuerSpec.CaBundle != nil {
+		log.V(1).Info(fmt.Sprintf("Adding custom CA bundle to trust store: %q", *issuerSpec.CaBundle))
+		tlsConfig.RootCAs = x509.NewCertPool()
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(*issuerSpec.CaBundle))
+		if !ok {
+			return nil, fmt.Errorf("failed to parse root certificate")
+		}
+	}
+	client.Init(resty.New().SetTLSClientConfig(tlsConfig))
 
 	baseUrl, err := url.Parse(issuerSpec.URL)
 	if err != nil {
@@ -17,15 +36,8 @@ func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][
 	}
 	username := string(secretData["username"])
 	password := string(secretData["password"])
-	client.Init(*baseUrl, username, password)
-
-	if issuerSpec.CaBundle != nil {
-		client.Http.SetCaBundle(*issuerSpec.CaBundle)
-	}
-
-	if issuerSpec.SkipTLSVerify {
-		client.Http.SkipTLSVerify()
-	}
+	client.Http.WithBaseUrl(*baseUrl)
+	client.Http.WithPasswordAuth(username, password)
 
 	return client, nil
 }

@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
 	corev1 "k8s.io/api/core/v1"
@@ -121,7 +121,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	}
 
 	log.V(1).Info("Starting health check")
-	checker, err := r.HealthCheckerBuilder(issuerSpec, secret.Data)
+	checker, err := r.HealthCheckerBuilder(log, issuerSpec, secret.Data)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerBuilder, err)
 	}

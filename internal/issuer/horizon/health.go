@@ -2,7 +2,8 @@ package horizon
 
 import (
 	"github.com/evertrust/horizon-go"
-	horizonapi "github.com/evertrust/horizon-issuer/api/v1alpha1"
+	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -10,10 +11,10 @@ type HealthChecker interface {
 	Check() error
 }
 
-type HealthCheckerBuilder func(*horizonapi.IssuerSpec, map[string][]byte) (*HorizonHealthChecker, error)
+type HealthCheckerBuilder func(logr.Logger, *horizonapi.IssuerSpec, map[string][]byte) (*HorizonHealthChecker, error)
 
-func HealthCheckerFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*HorizonHealthChecker, error) {
-	client, err := ClientFromIssuer(issuerSpec, secretData)
+func HealthCheckerFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*HorizonHealthChecker, error) {
+	client, err := ClientFromIssuer(log, issuerSpec, secretData)
 	if err != nil {
 		return nil, err
 	}
