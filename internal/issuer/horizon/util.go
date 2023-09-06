@@ -1,15 +1,28 @@
 package horizon
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"github.com/evertrust/horizon-go"
 	"github.com/evertrust/horizon-go/rfc5280"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
+	"gopkg.in/resty.v1"
 	"net/url"
 )
 
 func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
 	client := new(horizon.Horizon)
+
+	var tlsConfig = &tls.Config{
+		InsecureSkipVerify: issuerSpec.SkipTLSVerify,
+	}
+	if issuerSpec.CaBundle != nil {
+		tlsConfig.RootCAs = x509.NewCertPool()
+		tlsConfig.RootCAs.AppendCertsFromPEM([]byte(*issuerSpec.CaBundle))
+	}
+	var restyClient = resty.New().SetTLSClientConfig(tlsConfig)
+	client.Init(restyClient)
 
 	baseUrl, err := url.Parse(issuerSpec.URL)
 	if err != nil {
@@ -17,18 +30,8 @@ func ClientFromIssuer(issuerSpec *horizonapi.IssuerSpec, secretData map[string][
 	}
 	username := string(secretData["username"])
 	password := string(secretData["password"])
-	client.Init(nil)
 	client.Http.WithBaseUrl(*baseUrl)
-
 	client.Http.WithPasswordAuth(username, password)
-
-	if issuerSpec.CaBundle != nil {
-		client.Http.SetCaBundle(*issuerSpec.CaBundle)
-	}
-
-	if issuerSpec.SkipTLSVerify {
-		client.Http.SkipTLSVerify()
-	}
 
 	return client, nil
 }
