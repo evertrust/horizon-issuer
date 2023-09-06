@@ -4,10 +4,15 @@
 
 ## Prerequisites
 
-This software has been testing against the following environment :
+Before installing, ensure the following prerequisites are met :
+- This software requires Kubernetes version 1.22 and above.
+- cert-manager must be installed in your cluster prior to installing this chart.
+- The following compatibility matrix applies for Horizon versions :
 
-- Horizon version 2.2.0 and above
-- Kubernetes version 1.22 and above
+| Issuer version | Horizon version |
+|----------------|-----------------|
+| 0.1.x          | 2.2.x /2.3.x    |
+| 0.2.x          | 2.4.x           |
 
 ## Installation
 
@@ -39,6 +44,7 @@ kubectl create secret generic horizon-credentials \
  --from-literal=username=<horizon username> \
  --from-literal=password=<horizon password>
 ```
+
 These credentials should be grant the ability to enroll certificates on a WebRA profile.
 
 Then, create an `Issuer` or `ClusterIssuer` object depending on the scope you want to issue certificates on :
@@ -53,6 +59,7 @@ spec:
   authSecretName: horizon-credentials
   profile: IssuerProfile
 ```
+
 This object spec references the credentials secret we just created.
 
 ### Issuing certificates
@@ -105,7 +112,7 @@ metadata at multiple levels. Values get overridden in the following order of pre
 
 #### Using `defaultTemplate` on an issuer
 
-Default templates allows you to set default values for your certificates. 
+Default templates allows you to set default values for your certificates.
 These values will be used if no other value is set by the user on the resource they are issuing.
 On the `Issuer` or `ClusterIssuer` object, add the following key :
 
@@ -145,8 +152,9 @@ These values, if set, will take precedence over annotations on values set in the
 
 #### Using `overrideTemplate` on an issuer
 
-You may also want to ensure certain values are set on every certificate issued by a specific issuer. 
-This can be done using the `overrideTemplate` key on an `Issuer` or `ClusterIssuer` object. These values will take precedence over any other value set on the issuer or on the resource being issued:
+You may also want to ensure certain values are set on every certificate issued by a specific issuer.
+This can be done using the `overrideTemplate` key on an `Issuer` or `ClusterIssuer` object. These values will take
+precedence over any other value set on the issuer or on the resource being issued:
 
 ```yaml
 apiVersion: horizon.evertrust.io/v1beta1
@@ -214,15 +222,20 @@ spec:
 
 ### Migrating from v0.1.0 to v0.2.0
 
-In 0.2.0, the new CRD version is `v1beta1`, and `v1alpha1` is no longer supported. To migrate from the old version, you must first upgrade the CRDs:
+In 0.2.0, the new CRD version is `v1beta1`, and `v1alpha1` is no longer supported. To migrate from the old version, you
+must first upgrade the CRDs:
 
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/EverTrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_clusterissuers.yaml
 kubectl apply -f https://raw.githubusercontent.com/EverTrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_issuers.yaml
 ```
-This will not delete your existing `Issuer` and `ClusterIssuer` objects, but will allow you to create resources with the new `v1beta1` version.
+
+This will not delete your existing `Issuer` and `ClusterIssuer` objects, but will allow you to create resources with the
+new `v1beta1` version.
 After having re-created your issuer objects, you can start the upgrade using Helm :
+
 ```shell
 helm upgrade horizon-issuer evertrust/horizon-issuer
 ```
+
 And safely delete the old issuers.
