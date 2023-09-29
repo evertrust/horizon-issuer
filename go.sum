@@ -198,6 +198,8 @@ github.com/evertrust/horizon-go v0.0.5-0.20230315171537-908ec8b6733e h1:Gm+1r1Hg
 github.com/evertrust/horizon-go v0.0.5-0.20230315171537-908ec8b6733e/go.mod h1:/7fKYOw/NK9Hni+B/A24Ai4LyBFWserv3eMGMYDeyX0=
 github.com/evertrust/horizon-go v0.0.5-0.20230831133831-fd867a893a15 h1:YfqXA3uEdYIgWCy9G4w44zJwlwd1NyV4VMI4d61viSU=
 github.com/evertrust/horizon-go v0.0.5-0.20230831133831-fd867a893a15/go.mod h1:/7fKYOw/NK9Hni+B/A24Ai4LyBFWserv3eMGMYDeyX0=
+github.com/evertrust/horizon-go v0.0.5-0.20230929081107-895691de404f h1:LAA82Sp3I1vSJUSUOKf5zWCWt8U1tcjqLLUAv5jp/wE=
+github.com/evertrust/horizon-go v0.0.5-0.20230929081107-895691de404f/go.mod h1:/7fKYOw/NK9Hni+B/A24Ai4LyBFWserv3eMGMYDeyX0=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.12.0/go.mod h1:ELkj/draVOlAH/xkhN6mQ50Qd0MPOk5AAr3maGEBuJM=
 github.com/fatih/color v1.15.0 h1:kOqh6YHBtK8aywxGerMG2Eq3H6Qgoqeo13Bk2Mv/nBs=
