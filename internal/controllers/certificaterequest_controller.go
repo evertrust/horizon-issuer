@@ -223,6 +223,10 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if err != nil {
 				log.Error(err, "Unable to get the Certificate object. Ignoring.")
 			}
+			// If certificate has no annotation, we should create the map
+			if certificate.Annotations == nil {
+				certificate.Annotations = make(map[string]string)
+			}
 			certificate.Annotations[horizonissuer.LastCertificateIdAnnotation] = certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation]
 			parentUpdateErr = r.Update(ctx, certificate)
 		}
