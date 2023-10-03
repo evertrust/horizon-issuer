@@ -327,6 +327,9 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 
 		// remove our finalizer from the list and update it.
 		controllerutil.RemoveFinalizer(certificateRequest, FinalizerName)
+		if err := r.Update(ctx, certificateRequest); err != nil {
+			return nil
+		}
 	}
 
 	return nil
