@@ -14,13 +14,14 @@ jobs:
 
       - name: Build chart
         run: |
+          cd charts/horizon-issuer
           helm dependencies build
-          helm package charts/horizon-issuer
+          helm package .
 
       - name: Upload to Sonatype repo
         env:
           NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         run: |
-          PACKAGE="$(find . -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
+          PACKAGE="$(find charts/horizon-issuer -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
           curl -F file=@$PACKAGE --user "$NEXUS_USERNAME:$NEXUS_PASSWORD" --fail https://repo.evertrust.io/service/rest/v1/components?repository=charts
