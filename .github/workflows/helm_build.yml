@@ -1,0 +1,26 @@
+name: Helm package
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
+      - name: Build chart
+        run: |
+          helm dependencies build
+          helm package charts/horizon-issuer
+
+      - name: Upload to Sonatype repo
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: |
+          PACKAGE="$(find . -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
+          curl -F file=@$PACKAGE --user "$NEXUS_USERNAME:$NEXUS_PASSWORD" --fail https://repo.evertrust.io/service/rest/v1/components?repository=charts
