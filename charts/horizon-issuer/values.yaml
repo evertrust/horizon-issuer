@@ -1,5 +1,8 @@
 # Default values for horizon-issuer.
 
+# Whether to install CRDs with the Chart. Disable if you prefer to manage them separately
+installCRDs: false
+
 replicaCount: 1
 
 image:
