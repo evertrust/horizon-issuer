@@ -26,6 +26,9 @@ type IssuerSpec struct {
 	// for instance: "https://horizon.yourcompany.com".
 	URL string `json:"url"`
 
+	// Proxy is the URL of a proxy to use to reach the Horizon instance.
+	Proxy *string `json:"proxy,omitempty"`
+
 	// The Horizon Profile that will be used to enroll certificates. Your
 	// authenticated principal should have rights over this Profile.
 	Profile string `json:"profile"`

@@ -28,7 +28,16 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 			return nil, fmt.Errorf("failed to parse root certificate")
 		}
 	}
+
 	client.Init(resty.New().SetTLSClientConfig(tlsConfig))
+
+	if issuerSpec.Proxy != nil {
+		proxyUrl, err := url.Parse(*issuerSpec.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", "Invalid proxy URL", err)
+		}
+		client.Http.SetProxy(*proxyUrl)
+	}
 
 	baseUrl, err := url.Parse(issuerSpec.URL)
 	if err != nil {

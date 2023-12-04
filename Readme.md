@@ -202,9 +202,28 @@ store.
 By default, Horizon issuer does not revoke certificates deleted from Kubernetes as cert-manager can reuse the private
 key kept in the deleted certificate's secret.
 If you want to revoke certificates are they are deleted, set the `revokeCertificates` property to `true` on
-your `Issuer` or `ClusterIssuer` object. When doing so, you may want
-to [clean up secrets as soon as certificates are revoked](https://cert-manager.io/docs/usage/certificate/#cleaning-up-secrets-when-certificates-are-deleted)
-.
+your `Issuer` or `ClusterIssuer` object :
+
+```yaml
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
+spec:
+  revokeCertificates: true
+```
+
+When doing so, you may want
+to [clean up secrets as soon as certificates are revoked](https://cert-manager.io/docs/usage/certificate/#cleaning-up-secrets-when-certificates-are-deleted).
+
+### Using an outbound proxy
+If you need to use an outbound proxy to reach your Horizon instance, you may specify it in the `proxy` field of your
+`Issuer` or `ClusterIssuer` object :
+
+```yaml
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
+spec:
+  proxy: http://proxy.example.com:8080
+```
 
 ### Validate the certificate FQDN
 
@@ -213,6 +232,8 @@ issuer will check that a DNS entry matching the certificate CN and every DNS SAN
 not be issued. To enable, add the following key to your `Issuer` object :
 
 ```yaml
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
 spec:
   dnsChecker:
     server: 8.8.8.8:53

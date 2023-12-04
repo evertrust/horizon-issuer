@@ -253,6 +253,10 @@ spec:
                 description: The Horizon Profile that will be used to enroll certificates.
                   Your authenticated principal should have rights over this Profile.
                 type: string
+              proxy:
+                description: Proxy is the URL of a proxy to use to reach the Horizon
+                  instance.
+                type: string
               revokeCertificates:
                 default: false
                 description: RevokeCertificates controls whether this issuer should
