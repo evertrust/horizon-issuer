@@ -9,10 +9,11 @@ import (
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"github.com/go-logr/logr"
 	"gopkg.in/resty.v1"
+	corev1 "k8s.io/api/core/v1"
 	"net/url"
 )
 
-func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secretData map[string][]byte) (*horizon.Horizon, error) {
+func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*horizon.Horizon, error) {
 	client := new(horizon.Horizon)
 
 	tlsConfig := &tls.Config{}
@@ -43,10 +44,37 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 	if err != nil {
 		return nil, fmt.Errorf("%s: %v", "Invalid base URL", err)
 	}
-	username := string(secretData["username"])
-	password := string(secretData["password"])
+
+	if secret.Type == corev1.SecretTypeTLS {
+		if _, ok := secret.Data["tls.crt"]; !ok {
+			return nil, fmt.Errorf("%s: %v", "Missing tls.crt in secret", secret.Name)
+		}
+		if _, ok := secret.Data["tls.key"]; !ok {
+			return nil, fmt.Errorf("%s: %v", "Missing tls.key in secret", secret.Name)
+		}
+
+		cert, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", "Failed to load TLS certificate", err)
+		}
+
+		client.Http.WithCertAuth(cert)
+	} else if secret.Type == corev1.SecretTypeOpaque {
+		if _, ok := secret.Data["username"]; !ok {
+			return nil, fmt.Errorf("%s: %v", "Missing username in secret", secret.Name)
+		}
+		if _, ok := secret.Data["password"]; !ok {
+			return nil, fmt.Errorf("%s: %v", "Missing password in secret", secret.Name)
+		}
+		client.Http.WithPasswordAuth(
+			string(secret.Data["username"]),
+			string(secret.Data["password"]),
+		)
+	} else {
+		return nil, fmt.Errorf("%s: %v", "Unsupported secret type", secret.Type)
+	}
+
 	client.Http.WithBaseUrl(*baseUrl)
-	client.Http.WithPasswordAuth(username, password)
 
 	return client, nil
 }
