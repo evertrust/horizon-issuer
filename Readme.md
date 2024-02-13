@@ -5,6 +5,7 @@
 ## Prerequisites
 
 Before installing, ensure the following prerequisites are met :
+
 - This software requires Kubernetes version 1.22 and above.
 - cert-manager must be installed in your cluster prior to installing this chart.
 - The following compatibility matrix applies for Horizon versions :
@@ -13,6 +14,7 @@ Before installing, ensure the following prerequisites are met :
 |----------------|-----------------|
 | 0.1.x          | 2.2.x /2.3.x    |
 | 0.2.x          | 2.4.x           |
+| 0.3.x          | 2.4.x           |
 
 ## Installation
 
@@ -30,8 +32,6 @@ helm install horizon-issuer evertrust/horizon-issuer
 
 The default configuration should be fine for most cases. If you want to check out the configuration options, see
 the [values.yaml](charts/horizon-issuer/values.yaml) file.
-
-Since the chart installs CRDs, please ensure that you have the appropriate permissions when installing it.
 
 ## Usage
 
@@ -215,6 +215,7 @@ When doing so, you may want
 to [clean up secrets as soon as certificates are revoked](https://cert-manager.io/docs/usage/certificate/#cleaning-up-secrets-when-certificates-are-deleted).
 
 ### Using an outbound proxy
+
 If you need to use an outbound proxy to reach your Horizon instance, you may specify it in the `proxy` field of your
 `Issuer` or `ClusterIssuer` object :
 
@@ -239,7 +240,55 @@ spec:
     server: 8.8.8.8:53
 ```
 
+## CRD considerations
+
+`horizon-issuer` needs CRDs to properly work. Similarly to
+what [cert-manager](https://cert-manager.io/docs/installation/helm/#3-install-customresourcedefinitions) offers, you
+have two options when installing the chart :
+
+### Option 1 : Manage CRDs manually
+
+You can manually install the CRDs using `kubectl`. In that case, the following commands before installing or upgrading
+the chart:
+
+```shell
+kubectl apply -f https://raw.githubusercontent.com/evertrust/horizon-issuer/v0.3.0/charts/horizon-issuer/crds/horizon.evertrust.io_clusterissuers.yaml
+kubectl apply -f https://raw.githubusercontent.com/evertrust/horizon-issuer/v0.3.0/charts/horizon-issuer/crds/horizon.evertrust.io_issuers.yaml
+```
+
+This ensures that the CRDs are not upgraded by mistake. However, it requires you to manually upgrade the CRDs when a new
+version is released. If you opt for this method, ensure that the `installCRDs` key is set to `false` in your Helm.
+
+### Option 2 : Let the Helm chart manage CRDs
+
+You can let the Helm chart manage the CRDs for you. In that case, the CRDs will be installed and upgraded automatically
+when installing or upgrading the chart. To do so, ensure that the `installCRDs` key is set to `true` in your Helm.
+
+> [!NOTE]  
+> We generally recommend that you use the same method that you use to manage CRDs for the main `cert-manager`
+> deployment.
+
 ## Migration
+
+### Migrating from v0.2.0 to v0.3.0
+
+In 0.3.0, the CRDs can be managed by the Helm chart itself, similarly to
+what [cert-manager](https://cert-manager.io/docs/installation/helm/#3-install-customresourcedefinitions) offers. It
+means that you have [two options](#crd-considerations) when upgrading.
+
+Should you decide to manage CRDs automatically through the Helm chart, you'll need to update existing CRDs before
+upgrading so that they can be managed by the Helm chart. The following commands are required :
+
+```shell
+kubectl label crd/clusterissuers.horizon.evertrust.io app.kubernetes.io/managed-by=Helm
+kubectl label crd/issuers.horizon.evertrust.io app.kubernetes.io/managed-by=Helm
+
+kubectl annotate crd/clusterissuers.horizon.evertrust.io meta.helm.sh/release-name=<horizon-issuer> meta.helm.sh/release-namespace=<horizon-issuer>
+kubectl annotate crd/issuers.horizon.evertrust.io meta.helm.sh/release-name=<horizon-issuer> meta.helm.sh/release-namespace=<horizon-issuer>
+```
+
+Replace replace `release-name` with your Helm release name and `release-namespace` with the namespace you're installing
+into.
 
 ### Migrating from v0.1.0 to v0.2.0
 
@@ -247,8 +296,8 @@ In 0.2.0, the new CRD version is `v1beta1`, and `v1alpha1` is no longer supporte
 must first upgrade the CRDs:
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/EverTrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_clusterissuers.yaml
-kubectl apply -f https://raw.githubusercontent.com/EverTrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_issuers.yaml
+kubectl apply -f https://raw.githubusercontent.com/evertrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_clusterissuers.yaml
+kubectl apply -f https://raw.githubusercontent.com/evertrust/horizon-issuer/v0.2.0/charts/horizon-issuer/crds/horizon.evertrust.io_issuers.yaml
 ```
 
 This will not delete your existing `Issuer` and `ClusterIssuer` objects, but will allow you to create resources with the
