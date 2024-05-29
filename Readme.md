@@ -45,8 +45,15 @@ kubectl create secret generic horizon-credentials \
  --from-literal=password=<horizon password>
 ```
 
-These credentials should be grant the ability to enroll certificates on a WebRA profile.
+Alternatively, to authenticate using an X509 certificate, use a `kubernetes.io/tls` Secret instead:
 
+```shell
+kubectl create secret tls horizon-credentials \
+  --cert=path/to/tls.crt \ 
+  --key=path/to/tls.key
+```
+
+The principal should have the ability to enroll certificates on at least one WebRA profile. 
 Then, create an `Issuer` or `ClusterIssuer` object depending on the scope you want to issue certificates on :
 
 ```yaml
