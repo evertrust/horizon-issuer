@@ -1,7 +1,7 @@
 package horizon
 
 import (
-	"github.com/evertrust/horizon-go"
+	horizonclient "github.com/evertrust/horizon-go/client"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -24,11 +24,11 @@ func HealthCheckerFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec,
 }
 
 type HorizonHealthChecker struct {
-	Client horizon.Horizon
+	Client horizonclient.Client
 }
 
 func (o *HorizonHealthChecker) Check() error {
-	url := o.Client.Http.BaseUrl()
+	url, _ := o.Client.Http.BaseUrl()
 	logger := log.Log.
 		WithName("horizon.healthcheck").
 		WithValues("url", url.String())

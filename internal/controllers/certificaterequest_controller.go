@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/evertrust/horizon-go"
+	"k8s.io/client-go/tools/record"
 	"net"
 	"reflect"
 	"strings"
@@ -30,7 +32,6 @@ import (
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/cert-manager/cert-manager/pkg/util/pki"
 	"github.com/evertrust/horizon-go/http"
-	"github.com/evertrust/horizon-go/requests"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -62,6 +63,7 @@ type CertificateRequestReconciler struct {
 	ClusterResourceNamespace string
 	Clock                    clock.Clock
 	Issuer                   horizonissuer.HorizonIssuer
+	EventRecorder            record.EventRecorder
 }
 
 func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
@@ -206,6 +208,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			} else {
 				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, "Invalid request")
 			}
+			r.EventRecorder.Event(&certificateRequest, corev1.EventTypeWarning, "Error", err.Error())
 		}
 
 		var updateErr, parentUpdateErr error
@@ -285,7 +288,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if !cmutil.CertificateRequestIsApproved(&certificateRequest) {
 		// If the request has been submitted to Horizon, pull info from Horizon
 		if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
-			return r.Issuer.UpdateRequest(ctx, &certificateRequest)
+			return r.Issuer.UpdateRequest(&certificateRequest)
 		} else {
 			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
 			if err != nil {
@@ -304,7 +307,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 				if err != nil {
 					setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
 				}
-				return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, contactEmail, &certificateRequest)
+				return r.Issuer.SubmitEnrollRequest(*issuerSpec, labels, owner, team, contactEmail, &certificateRequest)
 			}
 		}
 	}
@@ -315,7 +318,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
 	if controllerutil.ContainsFinalizer(certificateRequest, FinalizerName) {
 		// our finalizer is present, so lets handle any external dependency
-		if err := r.Issuer.RevokeCertificate(ctx, certificateRequest); err != nil {
+		if err := r.Issuer.RevokeCertificate(certificateRequest); err != nil {
 			// if fail to delete the external dependency here, return with error
 			// so that it can be retried, except if the error is from Horizon
 			if _, isHorizonError := err.(*http.HorizonErrorResponse); !isHorizonError {
@@ -335,7 +338,7 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 	return nil
 }
 
-func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, *string, error) {
+func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]horizon.LabelElement, *string, *string, *string, error) {
 	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -421,11 +424,11 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 	}
 
 	// Convert labels to LabelElements for Horizon
-	var labelElements []requests.LabelElement
+	var labelElements []horizon.LabelElement
 	for k, v := range labels {
-		labelElements = append(labelElements, requests.LabelElement{
+		labelElements = append(labelElements, horizon.LabelElement{
 			Label: k,
-			Value: v,
+			Value: &horizon.String{v},
 		})
 	}
 
