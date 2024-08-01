@@ -4,40 +4,37 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"github.com/evertrust/horizon-go"
+	"github.com/evertrust/horizon-go/client"
 	"github.com/evertrust/horizon-go/rfc5280"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"github.com/go-logr/logr"
-	"gopkg.in/resty.v1"
 	corev1 "k8s.io/api/core/v1"
 	"net/url"
 )
 
-func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*horizon.Horizon, error) {
-	client := new(horizon.Horizon)
+func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*client.Client, error) {
+	horizon := client.New(nil)
 
-	tlsConfig := &tls.Config{}
 	if issuerSpec.SkipTLSVerify {
 		log.Info("Skipping TLS verification. Not recommended in production.")
-		tlsConfig.InsecureSkipVerify = true
+		horizon.SkipTLSVerify()
 	}
 	if issuerSpec.CaBundle != nil {
 		log.V(1).Info(fmt.Sprintf("Adding custom CA bundle to trust store: %q", *issuerSpec.CaBundle))
-		tlsConfig.RootCAs = x509.NewCertPool()
-		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(*issuerSpec.CaBundle))
+		rootCAs := x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM([]byte(*issuerSpec.CaBundle))
 		if !ok {
 			return nil, fmt.Errorf("failed to parse root certificate")
 		}
+		horizon.SetCaBundle(rootCAs)
 	}
-
-	client.Init(resty.New().SetTLSClientConfig(tlsConfig))
 
 	if issuerSpec.Proxy != nil {
 		proxyUrl, err := url.Parse(*issuerSpec.Proxy)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %v", "Invalid proxy URL", err)
 		}
-		client.Http.SetProxy(*proxyUrl)
+		horizon.SetProxy(*proxyUrl)
 	}
 
 	baseUrl, err := url.Parse(issuerSpec.URL)
@@ -58,7 +55,7 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 			return nil, fmt.Errorf("%s: %v", "Failed to load TLS certificate", err)
 		}
 
-		client.Http.WithCertAuth(cert)
+		horizon.SetCertAuth(cert)
 	} else if secret.Type == corev1.SecretTypeOpaque {
 		if _, ok := secret.Data["username"]; !ok {
 			return nil, fmt.Errorf("%s: %v", "Missing username in secret", secret.Name)
@@ -66,7 +63,7 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 		if _, ok := secret.Data["password"]; !ok {
 			return nil, fmt.Errorf("%s: %v", "Missing password in secret", secret.Name)
 		}
-		client.Http.WithPasswordAuth(
+		horizon.SetPasswordAuth(
 			string(secret.Data["username"]),
 			string(secret.Data["password"]),
 		)
@@ -74,9 +71,9 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 		return nil, fmt.Errorf("%s: %v", "Unsupported secret type", secret.Type)
 	}
 
-	client.Http.WithBaseUrl(*baseUrl)
+	horizon.SetBaseUrl(*baseUrl)
 
-	return client, nil
+	return horizon, nil
 }
 
 // BuildPemTrustchain constructs a PEM-encoded leaf-to-root trust chain, given a collection

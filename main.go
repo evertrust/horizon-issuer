@@ -156,6 +156,7 @@ func main() {
 		ClusterResourceNamespace: clusterResourceNamespace,
 		Clock:                    clock.RealClock{},
 		Issuer:                   horizon.HorizonIssuer{},
+		EventRecorder:            mgr.GetEventRecorderFor(horizon.IssuerNamespace),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CertificateRequest")
 		os.Exit(1)

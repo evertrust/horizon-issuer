@@ -8,9 +8,10 @@ import (
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/evertrust/horizon-go"
-	"github.com/evertrust/horizon-go/requests"
+	"github.com/evertrust/horizon-go/client"
 	"github.com/evertrust/horizon-go/rfc5280"
 	"github.com/evertrust/horizon-issuer/api/v1beta1"
+	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"time"
 )
@@ -26,24 +27,39 @@ const (
 )
 
 type HorizonIssuer struct {
-	Client horizon.Horizon
+	Client client.Client
+	Log    logr.Logger
 }
 
 // SubmitEnrollRequest is used to initially submit a decentralized enrollement request
 // to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
 // and sets an annotation on the CertificateRequest object to ensure it is not run again.
-func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.IssuerSpec, labels []requests.LabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	logger := ctrl.LoggerFrom(ctx)
+func (r *HorizonIssuer) SubmitEnrollRequest(issuer v1beta1.IssuerSpec, labels []horizon.LabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+	r.Log.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
+	template, err := r.Client.Requests.GetEnrollTemplate(horizon.WebRAEnrollTemplateParams{
+		Csr:     string(certificateRequest.Spec.Request),
+		Profile: issuer.Profile,
+	})
+	if err != nil {
+		return r.handleFailedRequest(certificateRequest, err)
+	}
 
-	logger.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
-	request, err := r.Client.Requests.DecentralizedEnroll(
-		issuer.Profile,
-		certificateRequest.Spec.Request,
-		labels,
-		owner,
-		team,
-		contactEmail,
-	)
+	template.Labels = labels
+	if owner != nil {
+		template.Owner = &horizon.OwnerElement{Value: &horizon.String{String: *owner}}
+	}
+	if team != nil {
+		template.Team = &horizon.TeamElement{Value: &horizon.String{String: *team}}
+	}
+	if contactEmail != nil {
+		template.ContactEmail = &horizon.ContactEmailElement{Value: &horizon.String{String: *contactEmail}}
+	}
+
+	request, err := r.Client.Requests.NewEnrollRequest(horizon.WebRAEnrollRequestParams{
+		Profile:  issuer.Profile,
+		Template: template,
+	})
+
 	if err != nil {
 		return r.handleFailedRequest(certificateRequest, err)
 	}
@@ -63,13 +79,8 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 }
 
 func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.IssuerSpec, certificateRequest *cmapi.CertificateRequest, lastCertificateId string) (result ctrl.Result, err error) {
-	logger := ctrl.LoggerFrom(ctx)
-
-	logger.Info(fmt.Sprintf("Submitting renewal request %s to profile %s", certificateRequest.UID, issuer.Profile))
-	request, err := r.Client.Requests.DecentralizedRenew(
-		certificateRequest.Spec.Request,
-		lastCertificateId,
-	)
+	r.Log.Info(fmt.Sprintf("Submitting renewal request %s to profile %s", certificateRequest.UID, issuer.Profile))
+	request, err := r.Client.Requests.NewRenewRequest(horizon.WebRARenewRequestParams{CertToRenewId: lastCertificateId, Template: &horizon.WebRARenewTemplate{Csr: string(certificateRequest.Spec.Request)}})
 	if err != nil {
 		return r.handleFailedRequest(certificateRequest, err)
 	}
@@ -90,32 +101,28 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 
 // UpdateRequest will fetch fresh request data from Horizon, using the horizon.evertrust.io/request-id
 // annotation. It will then dispatch the action to the correct handler function.
-func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	logger := ctrl.LoggerFrom(ctx)
-
-	request, err := r.Client.Requests.Get(certificateRequest.Annotations[RequestIdAnnotation])
+func (r *HorizonIssuer) UpdateRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+	request, err := r.Client.Requests.GetEnrollRequest(certificateRequest.Annotations[RequestIdAnnotation])
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to fetch request from Horizon"), err)
 	}
 
-	logger.Info(fmt.Sprintf("Handling %s request %s", request.Status, certificateRequest.UID))
+	r.Log.Info(fmt.Sprintf("Handling %s request %s", request.Status, certificateRequest.UID))
 	switch request.Status {
-	case requests.RequestStatusCompleted:
+	case horizon.Completed:
 		return r.handleCompletedRequest(request, certificateRequest)
-	case requests.RequestStatusPending, requests.RequestStatusApproved:
+	case horizon.Pending, horizon.Approved:
 		return r.handlePendingRequest()
-	case requests.RequestStatusDenied, requests.RequestStatusCanceled:
+	case horizon.Denied, horizon.Canceled:
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
 	return ctrl.Result{}, errors.New("invalid request status " + string(request.Status))
 }
 
-func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
-	logger := ctrl.LoggerFrom(ctx)
-
-	logger.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
-	_, err := r.Client.Requests.Revoke(string(certificateRequest.Status.Certificate), "UNSPECIFIED")
+func (r *HorizonIssuer) RevokeCertificate(certificateRequest *cmapi.CertificateRequest) error {
+	r.Log.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
+	_, err := r.Client.Requests.NewRevokeRequest(horizon.WebRARevokeRequestParams{CertificatePEM: string(certificateRequest.Status.Certificate), RevocationReason: "UNSPECIFIED"})
 	return err
 }
 
@@ -151,7 +158,7 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) handleCompletedRequest(request *requests.HorizonRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) handleCompletedRequest(request *horizon.WebRAEnrollRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionApproved,
@@ -162,7 +169,8 @@ func (r *HorizonIssuer) handleCompletedRequest(request *requests.HorizonRequest,
 
 	trustchain, err := r.Client.Rfc5280.Trustchain([]byte(request.Certificate.Certificate), rfc5280.LeafToRoot)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
+		trustchain = []rfc5280.CfCertificate{{Pem: request.Certificate.Certificate}}
+		r.Log.Error(err, "unable to build a trust chain for certificate")
 	}
 
 	var certificate, ca string
