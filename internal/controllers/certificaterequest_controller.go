@@ -206,6 +206,8 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			} else {
 				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, "Invalid request")
 			}
+			certificateRequest.Status.FailureTime = &metav1.Time{Time: time.Now()}
+
 		}
 
 		var updateErr, parentUpdateErr error
