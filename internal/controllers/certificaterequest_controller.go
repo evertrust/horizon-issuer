@@ -378,15 +378,19 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 		}
 	}
 
-	var annotations map[string]string
+	annotations := make(map[string]string)
 
 	// Get the annotations from the Ingress first
 	if ingress != nil {
-		annotations = ingress.GetObjectMeta().GetAnnotations()
+		for k, v := range ingress.GetObjectMeta().GetAnnotations() {
+			annotations[k] = v
+		}
 	}
 
 	if certificate != nil {
-		annotations = certificate.GetObjectMeta().GetAnnotations()
+		for k, v := range certificate.GetObjectMeta().GetAnnotations() {
+			annotations[k] = v
+		}
 	}
 
 	for k, v := range annotations {
@@ -473,7 +477,6 @@ func (r *CertificateRequestReconciler) issuerFromRequest(ctx context.Context, ce
 	}
 
 	return issuer, nil
-
 }
 
 func (r *CertificateRequestReconciler) ingressFromCertificate(ctx context.Context, certificate *cmapi.Certificate) (*v1.Ingress, error) {
