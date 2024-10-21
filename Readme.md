@@ -14,7 +14,7 @@ Before installing, ensure the following prerequisites are met :
 |----------------|-----------------|
 | 0.1.x          | 2.2.x /2.3.x    |
 | 0.2.x          | 2.4.x           |
-| 0.3.x          | 2.4.x           |
+| 0.3.x          | >= 2.4.x        |
 
 ## Installation
 
