@@ -2,16 +2,22 @@
 
 > A cert-manager issuer allowing you to use your Horizon instance to centralize your Kubernetes certificates issuance.
 
+<p align="center">
+  <img height="500" src="docs/architecture.png">
+</p>
+
 ## Prerequisites
 
 Before installing, ensure the following prerequisites are met :
 
-- This software requires Kubernetes version 1.22 and above.
-- cert-manager must be installed in your cluster prior to installing this chart.
+- This software requires Kubernetes version 1.22 and above;
+- You have helm on a device with administrative access to the cluster (required to install CRDs);
+- The cluster can either pull images from Internet or a proxy has been set up for `registry.evertrust.io`;
+- [cert-manager must be installed](https://cert-manager.io/docs/installation/) in your cluster prior to installing this chart;
 - The following compatibility matrix applies for Horizon versions :
 
 | Issuer version | Horizon version |
-|----------------|-----------------|
+| -------------- | --------------- |
 | 0.1.x          | 2.2.x /2.3.x    |
 | 0.2.x          | 2.4.x           |
 | 0.3.x          | >= 2.4.x        |
@@ -49,11 +55,11 @@ Alternatively, to authenticate using an X509 certificate, use a `kubernetes.io/t
 
 ```shell
 kubectl create secret tls horizon-credentials \
-  --cert=path/to/tls.crt \ 
+  --cert=path/to/tls.crt \
   --key=path/to/tls.key
 ```
 
-The principal should have the ability to enroll certificates on at least one WebRA profile. 
+The principal should have the ability to enroll certificates on at least one WebRA profile.
 Then, create an `Issuer` or `ClusterIssuer` object depending on the scope you want to issue certificates on :
 
 ```yaml
