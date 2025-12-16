@@ -19,24 +19,104 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/tink-crypto/tink-go/v2/aead"
+	"github.com/tink-crypto/tink-go/v2/insecurecleartextkeyset"
+	"github.com/tink-crypto/tink-go/v2/keyset"
+
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
+	. "github.com/onsi/gomega"
 )
 
 const (
 	certmanagerVersion = "v1.19.1"
+
 	certmanagerURLTmpl = "https://github.com/cert-manager/cert-manager/releases/download/%s/cert-manager.yaml"
 
 	defaultKindBinary  = "kind"
 	defaultKindCluster = "kind"
+
+	horizonHelmRepository = "https://repo.evertrust.io/repository/charts"
+	horizonNamespace      = "horizon"
+	horizonImageRegistry  = "quay.io/evertrust"
+	horizonImageName      = "horizon"
+	horizonImageTag       = "2.8.0"
+	horizonLicensePath    = "test/assets/horizon.lic"
+	horizonAdminPassword  = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn."
 )
 
 func warnError(err error) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
+}
+
+// WaitForCertificateReady returns a function suitable for Gomega's Eventually to
+// assert that the specified certificate reaches Ready status.
+func WaitForCertificateReady(certificateName string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificates/%s", certificateName),
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), "Certificate %s not ready", certificateName)
+	}
+}
+
+// WaitForCertificateRequestReady returns a function suitable for Gomega's Eventually to
+// assert that the specified certificate request reaches Ready status.
+func WaitForCertificateRequestReady(certificateRequestName string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), "CertificateRequest %s not ready", certificateRequestName)
+	}
+}
+
+// WaitForIssuerReady returns a function suitable for Gomega's Eventually to
+// assert that the specified issuer (or clusterissuer) reaches Ready status.
+func WaitForIssuerReady(resource string, namespace string) func(Gomega) {
+	return func(g Gomega) {
+		args := []string{
+			"get", resource,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}",
+		}
+		if namespace != "" {
+			args = append(args, "-n", namespace)
+		}
+		cmd := exec.Command("kubectl", args...)
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), "Issuer %s not ready", resource)
+	}
+}
+
+// ExpectCertificateRequestAnnotations fetches CertificateRequests for the given certificate request name
+// and asserts that their annotations match the expected entries.
+func ExpectCertificateRequestAnnotations(certificateRequestName string, expectedAnnotations map[string]string) {
+	cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+		"-o", "json")
+	output, err := Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to fetch CertificateRequests for %s", certificateRequestName)
+
+	var certificateRequest struct {
+		Metadata struct {
+			Annotations map[string]string `json:"annotations"`
+		} `json:"metadata"`
+	}
+	err = json.Unmarshal([]byte(output), &certificateRequest)
+	Expect(err).NotTo(HaveOccurred(), "Failed to parse CertificateRequest response for %s", certificateRequestName)
+
+	annotations := certificateRequest.Metadata.Annotations
+	Expect(annotations).NotTo(BeNil(), "CertificateRequest annotations should be present")
+	for key, value := range expectedAnnotations {
+		Expect(annotations).To(HaveKeyWithValue(key, value))
+	}
 }
 
 // Run executes the provided command within this context
@@ -57,6 +137,14 @@ func Run(cmd *exec.Cmd) (string, error) {
 	}
 
 	return string(output), nil
+}
+
+// ApplyManifest applies a manifest using kubectl and asserts success.
+func ApplyManifest(manifestPath string, args ...string) {
+	cmdArgs := append([]string{"apply", "-f", manifestPath}, args...)
+	cmd := exec.Command("kubectl", cmdArgs...)
+	_, err := Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to apply manifest %s", manifestPath)
 }
 
 // UninstallCertManager uninstalls the cert manager
@@ -131,6 +219,100 @@ func IsCertManagerCRDsInstalled() bool {
 	}
 
 	return false
+}
+
+func InstallHorizon() error {
+	horizonImage := fmt.Sprintf("%s/%s:%s", horizonImageRegistry, horizonImageName, horizonImageTag)
+
+	cmd := exec.Command("docker", "pull", horizonImage)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	if err := LoadImageToKindClusterWithName(horizonImage); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("kubectl", "create", "namespace", horizonNamespace)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	if keyset, err := GenerateTinkKeyset(); err != nil {
+		return err
+	} else {
+		cmd = exec.Command("kubectl", "create", "secret", "generic", "horizon-secrets",
+			"--namespace", horizonNamespace,
+			fmt.Sprintf("--from-file=license=%s", horizonLicensePath),
+			fmt.Sprintf("--from-literal=keyset=%s", keyset),
+			fmt.Sprintf("--from-literal=initialAdminHashPassword=%s", horizonAdminPassword),
+		)
+		if _, err := Run(cmd); err != nil {
+			return err
+		}
+	}
+
+	cmd = exec.Command("kubectl", "apply", "-f", "test/assets/manifests/local-ca.yml", "-n", horizonNamespace)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("helm", "repo", "add", "evertrust", horizonHelmRepository, "--force-update")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("helm", "upgrade", "horizon", "evertrust/horizon",
+		"--namespace", horizonNamespace,
+		"--create-namespace",
+		"--install",
+		"--values", "test/assets/values.yaml",
+		"--set", fmt.Sprintf("image.registry=%s", horizonImageRegistry),
+		"--set", fmt.Sprintf("image.repository=%s", horizonImageName),
+		"--set", fmt.Sprintf("image.tag=%s", horizonImageTag),
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+	// Wait for Horizon to be ready
+	cmd = exec.Command("kubectl", "wait", "pods",
+		"-l", "app.kubernetes.io/name=horizon",
+		"--for", "condition=Ready",
+		"--namespace", horizonNamespace,
+		"--timeout", "5m",
+	)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UninstallHorizon uninstalls the cert manager
+func UninstallHorizon() {
+	cmd := exec.Command("kubectl", "delete", "namespace", horizonNamespace)
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
+// GenerateTinkKeyset generates a new Tink cleartext keyset as a JSON string.
+func GenerateTinkKeyset() (string, error) {
+	// Create a new keyset handle using an AEAD template (AES256-GCM here).
+	kh, err := keyset.NewHandle(aead.AES256GCMKeyTemplate())
+	if err != nil {
+		return "", err
+	}
+
+	buff := &bytes.Buffer{}
+
+	// nil master key AEAD => cleartext keyset.
+	err = insecurecleartextkeyset.Write(kh, keyset.NewJSONWriter(buff))
+	if err != nil {
+		return "", err
+	}
+
+	return buff.String(), nil
 }
 
 // LoadImageToKindClusterWithName loads a local docker image to the kind cluster

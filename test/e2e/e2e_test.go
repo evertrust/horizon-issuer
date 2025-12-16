@@ -25,6 +25,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -47,6 +49,12 @@ const metricsRoleBindingName = "horizon-issuer-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
+	expectedAnnotations := map[string]string{
+		"horizon.evertrust.io/owner":              "administrator",
+		"horizon.evertrust.io/team":               "rocket",
+		"horizon.evertrust.io/contact-email":      "user@rocket.com",
+		"horizon.evertrust.io/labels.environment": "staging",
+	}
 
 	// Before running the tests, set up the environment by creating the namespace,
 	// enforce the restricted security policy to the namespace, installing CRDs,
@@ -77,8 +85,16 @@ var _ = Describe("Manager", Ordered, func() {
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
 	AfterAll(func() {
+		if skipCleanup {
+			return
+		}
+
 		By("cleaning up the curl pod for metrics")
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
+		_, _ = utils.Run(cmd)
+
+		By("cleaning up the cluster role binding for metrics")
+		cmd = exec.Command("kubectl", "delete", "clusterrolebinding", metricsRoleBindingName)
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
@@ -108,6 +124,15 @@ var _ = Describe("Manager", Ordered, func() {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Controller logs: %s", err)
 			}
 
+			By("Fetching Horizon pod logs")
+			cmd = exec.Command("kubectl", "logs", "-l", "app.kubernetes.io/name=horizon", "-n", "horizon")
+			horizonLogs, err := utils.Run(cmd)
+			if err == nil {
+				_, _ = fmt.Fprintf(GinkgoWriter, "Horizon logs:\n %s", horizonLogs)
+			} else {
+				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Horizon logs: %s", err)
+			}
+
 			By("Fetching Kubernetes events")
 			cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp")
 			eventsOutput, err := utils.Run(cmd)
@@ -118,7 +143,7 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("Fetching curl-metrics logs")
-			cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
+			cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace, "--since-time", specReport.StartTime.Format(time.RFC3339))
 			metricsOutput, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Metrics logs:\n %s", metricsOutput)
@@ -268,15 +293,179 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		It("can reconcile issuer health status", func() {
+			By("creating a valid clusterissuer")
+			utils.ApplyManifest("test/assets/manifests/valid-clusterissuer.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/valid-clusterissuer", ""), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("failing to create an issuer without proper TLS trust settings")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-without-ca.yml")
+			verifyInvalidClusterIssuerNotReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "clusterissuers.horizon.evertrust.io/clusterissuer-without-ca",
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("False"), "Invalid ClusterIssuer ready")
+			}
+			Eventually(verifyInvalidClusterIssuerNotReady, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("creating a clusterissuer with specific CA bundle")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-ca.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-ca", ""), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("creating a clusterissuer with skipTlsVerify")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-skiptlsverify.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-skiptlsverify", ""), 3*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("can issue a valid certificate", func() {
+			utils.ApplyManifest("test/assets/manifests/valid-certificate.yml")
+			Eventually(utils.WaitForCertificateReady("valid-certificate"), 3*time.Minute, time.Second).Should(Succeed())
+		})
+
+		It("can issue a certificate from an ingress with metadata", func() {
+			utils.ApplyManifest("test/assets/manifests/ingress-with-metadata.yml")
+			Eventually(utils.WaitForCertificateReady("ingress-with-metadata"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("ingress-with-metadata-1", expectedAnnotations)
+		})
+
+		It("can issue a certificate with metadata", func() {
+			utils.ApplyManifest("test/assets/manifests/certificate-with-metadata.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-metadata"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("certificate-with-metadata-1", expectedAnnotations)
+		})
+
+		It("honors an issuer's defaultTemplate", func() {
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-defaulttemplate.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-defaulttemplate", ""), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ApplyManifest("test/assets/manifests/certificate-with-defaulttemplate.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-defaulttemplate"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("certificate-with-defaulttemplate-1", expectedAnnotations)
+		})
+
+		It("can override an issuer's defaultTemplate", func() {
+			utils.ApplyManifest("test/assets/manifests/certificate-with-defaulttemplate-override.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-defaulttemplate-override"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("certificate-with-defaulttemplate-override-1", map[string]string{
+				"horizon.evertrust.io/owner":              "user",
+				"horizon.evertrust.io/team":               "dx",
+				"horizon.evertrust.io/contact-email":      "test@rocket.com",
+				"horizon.evertrust.io/labels.environment": "prod",
+			})
+		})
+
+		It("honors an issuer's overrideTemplate", func() {
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-overridetemplate.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-overridetemplate", ""), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ApplyManifest("test/assets/manifests/certificate-with-overridetemplate.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-overridetemplate"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-1", expectedAnnotations)
+		})
+
+		It("cannot override an issuer's overrideTemplate", func() {
+			utils.ApplyManifest("test/assets/manifests/certificate-with-overridetemplate-override.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-overridetemplate-override"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-override-1", expectedAnnotations)
+		})
+
+		// TODO: currently broken by the SDK
+		// It("can renew a certificate", func() {
+		// 	By("issuing a initial certificate")
+		// 	utils.ApplyManifest("test/assets/manifests/certificate-to-renew.yml")
+		// 	Eventually(utils.WaitForCertificateReady("certificate-to-renew"), 3*time.Minute, time.Second).Should(Succeed())
+
+		// 	By("manually triggering the renew of the certificate")
+		// 	patch := `{"status":{"conditions":[{"type":"Issuing","status":"True","reason":"ManuallyTriggered","message":"Certificate re-issuance manually triggered","observedGeneration":2}]}}`
+		// 	cmd := exec.Command("kubectl", "patch", "certificate", "certificate-to-renew",
+		// 		"--type=merge", "--subresource=status", "-p", patch)
+		// 	_, err := utils.Run(cmd)
+		// 	Expect(err).NotTo(HaveOccurred(), "Failed to trigger renewal")
+
+		// 	By("waiting for the certificate to be re-issued")
+		// 	Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
+		// })
+
+		// TODO: currently not implemented
+		// It("can update a certificate", func() {
+		// 	By("enrolling an initial certificate")
+		// 	utils.ApplyManifest("test/assets/manifests/certificate-to-update.yml")
+		// 	Eventually(utils.WaitForCertificateReady("certificate-to-update"), 3*time.Minute, time.Second).Should(Succeed())
+		// 	utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-override-1", expectedAnnotations)
+
+		// 	By("updating the certificate metadata")
+		// 	utils.ApplyManifest("test/assets/manifests/certificate-updated.yml")
+		// 	Eventually(utils.WaitForCertificateReady("certificate-to-update"), 3*time.Minute, time.Second).Should(Succeed())
+		// 	utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-override-2", map[string]string{
+		// 		"horizon.evertrust.io/owner":              "user",
+		// 		"horizon.evertrust.io/team":               "dx",
+		// 		"horizon.evertrust.io/contact-email":      "test@rocket.com",
+		// 		"horizon.evertrust.io/labels.environment": "prod",
+		// 	})
+		// })
+
+		It("can revoke a certificate", func() {
+			By("creating an issuer that revokes certificates")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-revokecertificates.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-revokecertificates", ""), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("issuing a certificate to revoke")
+			utils.ApplyManifest("test/assets/manifests/certificate-to-revoke.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-to-revoke"), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("revoking the certificate")
+			cmd := exec.Command("kubectl", "delete", "certificates/certificate-to-revoke")
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("ensuring the RevokedCertificate event has been recorded")
+			verifyRevokedEvent := func(g Gomega) {
+				eventCmd := exec.Command("kubectl", "get", "events",
+					"--all-namespaces",
+					"--field-selector",
+					"involvedObject.kind=ClusterIssuer,involvedObject.name=clusterissuer-with-revokecertificates,reason=RevokedCertificate",
+					"-o", "json",
+				)
+				eventOutput, cmdErr := utils.Run(eventCmd)
+				g.Expect(cmdErr).NotTo(HaveOccurred())
+
+				var events struct {
+					Items []struct {
+						Reason string `json:"reason"`
+					} `json:"items"`
+				}
+				g.Expect(json.Unmarshal([]byte(eventOutput), &events)).To(Succeed())
+				g.Expect(events.Items).NotTo(BeEmpty(), "RevokedCertificate event not found for ClusterIssuer clusterissuer-with-revokecertificates")
+			}
+			Eventually(verifyRevokedEvent, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+		})
+
+		It("can use an outbound proxy", func() {
+			By("deploying a proxy service")
+			utils.ApplyManifest("test/assets/manifests/proxy.yml")
+			verifyProxyPodReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "pod", "tinyproxy", "-n", "tinyproxy",
+					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("False"), "Proxy pod not ready")
+			}
+			Eventually(verifyProxyPodReady, 10*time.Minute, time.Second).Should(Succeed())
+
+			By("creating a clusterissuer with proxy")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-proxy.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-proxy", namespace), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("ensuring the proxy pod received requests")
+			cmd := exec.Command("kubectl", "exec", "tinyproxy", "-n", "tinyproxy", "--", "/bin/bash", "-c",
+				"http_proxy=http://localhost:8888 wget --proxy on http://tinyproxy.stats -O - -q | sed -n '/Number of requests/{n;s/.*<td>\\([0-9]\\+\\)<\\/td>.*/\\1/p}'",
+			)
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to get tinyproxy stats")
+			requestCount, err := strconv.Atoi(strings.TrimSpace(output))
+			Expect(err).NotTo(HaveOccurred(), "Failed to get tinyproxy stats")
+			Expect(requestCount).To(BeNumerically(">", 0))
+		})
 	})
 })
 

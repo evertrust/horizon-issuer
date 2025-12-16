@@ -2,6 +2,8 @@ name: E2E Tests
 
 on:
   push:
+    branches:
+      - master
   pull_request:
 
 jobs:
@@ -25,6 +27,17 @@ jobs:
 
       - name: Verify kind installation
         run: kind version
+
+      - name: Login to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Fetch license
+        run: |
+          printf "${{ secrets.LICENSE }}" >> test/assets/horizon.lic
 
       - name: Running Test e2e
         run: |

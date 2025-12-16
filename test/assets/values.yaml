@@ -1,0 +1,207 @@
+allowedHosts:
+  - "."
+initialAdminHashPassword:
+  enabled: true
+  secretName: horizon-secrets
+  secretKey: initialAdminHashPassword
+defaultVault:
+  keyset:
+    secretName: horizon-secrets
+    secretKey: keyset
+license:
+  secretName: horizon-secrets
+  secretKey: license
+temporaryDatabase:
+  enabled: true
+  extraVolumes:
+    - name: mongo-initdb
+      configMap:
+        name: mongo-initdb
+  extraVolumeMounts:
+    - name: mongo-initdb
+      mountPath: /docker-entrypoint-initdb.d
+extraVolumes:
+  - name: cert
+    secret:
+      secretName: horizon-certificate
+      items:
+        - key: keystore.p12
+          path: cert.p12
+extraVolumeMounts:
+  - name: cert
+    mountPath: /opt/horizon/ssl
+environment:
+  - name: HTTPS_KEYSTORE_PATH
+    value: /opt/horizon/ssl/cert.p12
+  - name: HTTPS_KEYSTORE_PASSWORD
+    value: password
+  - name: HTTPS_KEYSTORE_TYPE
+    value: jks
+extraObjects:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: horizon-pkcs12-password
+    stringData:
+      password: password
+  - apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: horizon-certificate
+    spec:
+      secretName: horizon-certificate
+      commonName: horizon.horizon.svc.cluster.local
+      dnsNames:
+        - horizon.horizon.svc.cluster.local
+      issuerRef:
+        name: local-ca
+      keystores:
+        pkcs12:
+          create: true
+          passwordSecretRef:
+            name: horizon-pkcs12-password
+            key: password
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: mongo-initdb
+    data:
+      seed.js: |
+        use('horizon');
+        db.pki_connectors.insertOne({
+          _id: ObjectId('6932e34a2b208d7717b6d895'),
+          name: 'issuer',
+          type: 'integrated',
+          certType: 'serverclient',
+          signAlg: 'SHA256',
+          crtLifetime: '365 days',
+          checkPop: true,
+          cryptoType: 'legacy'
+        });
+        db.certificate_labels.insertOne({
+          _id: ObjectId('67780d393400002100f7e91e'),
+          name: 'environment',
+          displayName: [],
+          description: []
+        });
+        db.security_teams.insertOne({
+          _id: ObjectId('67780d133400002100f7e91a'),
+          name: 'rocket',
+          description: [],
+          contact: 'team@rocket.com',
+          displayName: [],
+          managers: [],
+        });
+        db.security_teams.insertOne({
+          _id: ObjectId('67780d133400002100f7e91b'),
+          name: 'dx',
+          description: [],
+          contact: 'team@dx.com',
+          displayName: [],
+          managers: [],
+        });
+        db.profiles.insertOne({
+          _id: ObjectId('6932e37e2b208d7717b6d897'),
+          module: 'webra',
+          name: 'issuer',
+          displayName: [],
+          description: [],
+          enabled: true,
+          pkiConnector: 'issuer',
+          csrDataMapping: {},
+          authorizationLevels: {
+            enroll: { accessLevel: 'authorized' },
+            enrollApi: { accessLevel: 'authorized' },
+            requestEnroll: { accessLevel: 'authorized' },
+            approveEnroll: { accessLevel: 'authorized' },
+            revoke: { accessLevel: 'authorized' },
+            requestRevoke: { accessLevel: 'authorized' },
+            approveRevoke: { accessLevel: 'authorized' },
+            search: { accessLevel: 'authorized' },
+            update: { accessLevel: 'authorized' },
+            requestUpdate: { accessLevel: 'authorized' },
+            approveUpdate: { accessLevel: 'authorized' },
+            recover: { accessLevel: 'authorized' },
+            recoverApi: { accessLevel: 'authorized' },
+            requestRecover: { accessLevel: 'authorized' },
+            approveRecover: { accessLevel: 'authorized' },
+            migrate: { accessLevel: 'authorized' },
+            requestMigrate: { accessLevel: 'authorized' },
+            approveMigrate: { accessLevel: 'authorized' },
+            renew: { accessLevel: 'authorized' },
+            renewApi: { accessLevel: 'authorized' },
+            requestRenew: { accessLevel: 'authorized' },
+            approveRenew: { accessLevel: 'authorized' },
+            auditRequest: { accessLevel: 'authorized' }
+          },
+          triggers: { onEnroll: [], onRevoke: [], onRenew: [] },
+          requestsPolicy: {
+            enroll: '7 days',
+            revoke: '7 days',
+            update: '7 days',
+            migrate: '7 days',
+            renew: '7 days'
+          },
+          cryptoPolicy: {
+            centralized: false,
+            decentralized: true,
+            escrow: false,
+            p12storeEncryptionType: 'DES_AVERAGE',
+            showP12PasswordOnEnroll: false,
+            showP12OnEnroll: false,
+            showP12PasswordOnRecover: false,
+            showP12OnRecover: false,
+            keyAvailability: '7 days'
+          },
+          selfPermissions: {
+            selfRecover: false,
+            selfUpdate: false,
+            selfRevoke: false,
+            selfRenew: false,
+            selfPopRenew: false,
+            selfPopRevoke: false,
+            selfPopUpdate: false,
+            selfPopImport: false
+          },
+          certificateTemplate: {
+            subject: [
+              {
+                type: 'CN',
+                mandatory: true,
+                editableByRequester: true,
+                editableByApprover: false
+              }
+            ],
+            ownerPolicy: {
+              editableByRequester: true,
+              editableByApprover: false,
+              mandatory: false
+            },
+            teamPolicy: {
+              editableByRequester: true,
+              editableByApprover: false,
+              regex: null,
+              whitelist: null,
+              value: null,
+              computationRule: null,
+              mandatory: false,
+              description: null,
+              requesterTeamsOnly: false
+            },
+            labels: [
+              {
+                label: 'environment',
+                mandatory: false,
+                editableByRequester: true,
+                editableByApprover: false
+              }
+            ],
+            contactEmailPolicy: {
+              mandatory: false,
+              editableByRequester: true,
+              editableByApprover: false
+            }
+          },
+          dsFlow: [],
+          authorizationMode: 'authorized'
+        });

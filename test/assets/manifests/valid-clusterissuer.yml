@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: horizon-credentials
+  namespace: horizon-issuer-system
+stringData:
+  username: administrator
+  password: horizon
+---
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
+metadata:
+  name: valid-clusterissuer
+spec:
+  url: http://horizon.horizon.svc.cluster.local:9000
+  profile: issuer
+  authSecretName: horizon-credentials

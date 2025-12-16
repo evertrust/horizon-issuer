@@ -1,0 +1,11 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-to-revoke
+spec:
+  commonName: certificate-to-revoke.org
+  secretName: certificate-to-revoke
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: clusterissuer-with-revokecertificates

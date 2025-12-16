@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: local-ca
+stringData:
+  tls.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDGDCCAgCgAwIBAgIUJRH3Mh14JF91o1URvAJAU0t1a9MwDQYJKoZIhvcNAQEL
+    BQAwGTEXMBUGA1UEAwwOSXNzdWVyIFJvb3QgQ0EwIBcNMjUxMjA4MTQwMzM1WhgP
+    MjEyNTExMTQxNDAzMzVaMBkxFzAVBgNVBAMMDklzc3VlciBSb290IENBMIIBIjAN
+    BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzrPnY1QmcK6v51u7Urgw2bVRn2DN
+    CymUpt6wLqt0mIwyNjVRmX/LSRrthnA2LeebB5U21AZsVFtLI/yckfPnliD5mpvq
+    VtrJb9hez2DoekNsASszTc+6nzvscvI0wB/d5okZVAPujJ92RkQEhm6aFmbkSSYj
+    c/9RTQJX2thyrbfVY4t8r+qGK9nIgwmWNWDu9RuklxFwd7Q9xcasW7JcOyoyoTwj
+    V5XSZ7Urx5B/5hb1L+NpOQ99bv+ZRhaSlcfMRgk7JNjv37SjjETSnX5DpCO2ygXm
+    xrDvuMSeovNi4lbWZasZ/SrtgmX1rqq6tO1jFQpkAox2Oi+HjfsD25m1iwIDAQAB
+    o1YwVDAdBgNVHQ4EFgQUhRdYYUTJDgef3J2fTHWBBuP72vIwHwYDVR0jBBgwFoAU
+    hRdYYUTJDgef3J2fTHWBBuP72vIwEgYDVR0TAQH/BAgwBgEB/wIBATANBgkqhkiG
+    9w0BAQsFAAOCAQEAOD44adbNmTCKPdguYDKvTp/O0rZN9ZK2DT5RuIFkPT0EeDPw
+    yIcQTX3OOi1t4tLdxMvpHGf4KMnK+I89vJug9dCKpglciM+AWRFHIrlVaDTa2Mny
+    4tPw+IuJMvbQ+NnpR/ou/HqFJWuebw9buSExb6yt4Vg4xHYxKmNP1L3PIQJ7q9Ks
+    WBegjaOyJ49Q4Fnu9wTMcs0EvH+/h1udgLMt0YTHs3hYn8ZRIxlhDzhfvEZKu1nj
+    i2PSs26bQ0kcS+7alHzPICpjGqXzKhI47NZol0gHRiLw92AVkGvfd49UvKjYT+SZ
+    37ljf6IheM3VkqPHzvT+2MilYW2r6EJP6pJA+Q==
+    -----END CERTIFICATE-----
+  tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDOs+djVCZwrq/n
+    W7tSuDDZtVGfYM0LKZSm3rAuq3SYjDI2NVGZf8tJGu2GcDYt55sHlTbUBmxUW0sj
+    /JyR8+eWIPmam+pW2slv2F7PYOh6Q2wBKzNNz7qfO+xy8jTAH93miRlUA+6Mn3ZG
+    RASGbpoWZuRJJiNz/1FNAlfa2HKtt9Vji3yv6oYr2ciDCZY1YO71G6SXEXB3tD3F
+    xqxbslw7KjKhPCNXldJntSvHkH/mFvUv42k5D31u/5lGFpKVx8xGCTsk2O/ftKOM
+    RNKdfkOkI7bKBebGsO+4xJ6i82LiVtZlqxn9Ku2CZfWuqrq07WMVCmQCjHY6L4eN
+    +wPbmbWLAgMBAAECggEAP16wRad60Xj8vLVGzKljcJtCFtaahh2NUUtcQDKYYFw6
+    2JuoFKM1M4hp4ZltQs2KndyFHqOJeqMyeinr5mMcUM5zN48tXMtejkeLaZCQNUuO
+    RR11cRmKYV8BsovG2E/su8y0UymRbNNGc2xO5tfprYyF2Fc0708LIcziGlnZbqAr
+    lYwSiksWaxjP9Ad6JS/VLflnKZIAmyNsb6AjctvPVYyugrdRSDcmbYxH1c01fE+3
+    DEu/SKzd3MD4rSD8UrDLuIS+Yti10OQrq9xAiIP4VZn65ZfOVygJ5Nsh+iH7284o
+    fSTJ8R5/G1GBe6JXeNAjwswd/Jbz3LGt3dFXu53tQQKBgQD/76rq0kiz1YyKCjhD
+    +zfhksv6UVxv9VYsDcV7KeJWIlK8Q1CUpWZ1Up3uWjIRcXPzZ3qD2B2uu3yACFcT
+    wEpFcL6vPi1KGCO2fGjwRxTwo4PsLqU43dCV0z57n3LYI6Ya5rD3/5no1PWcyF9o
+    Hyrwpif07RfUnmaPLkNE8ebrgwKBgQDOwRgsDrDzB3fC67OHlGUpV1IY1GVQqd2K
+    HI1pA7/J8LtHFBlGBmzygSd695L8bSEnpm5azEavB+0Jq4G06ZuDwixWfo8zSl6Q
+    nCsHVCmbQGdQs+ia9rVsvhBEr4/1i8AEsQJMhb2pReuFU7gySJpHYXtsK3XzXJ57
+    t/L/upXHWQKBgCmwLUPwmr0INMsrXPzdx71rfuQ4KnlmGfI1EAy+xspG7vkRcee0
+    hVro6Saw9GTY+Q0VtuQQ6MzUZzQnp59k+/QRqE29L/1Yr0CDRUiWG3gS+mMXOfxo
+    TRiKfyv9zeQc8mqBVyQeM0C0p4kxLjE0mnb2aZ3AnNgaMRRzcauiR33nAoGAalgd
+    g8PGtipYKlUr0Ye9hMcaPhU5S4Ujoz9OaP55rnf5C/VFjqQNc6qE0RX4b4f+LrPH
+    PUKm9K5h+MBThedGiz3bql2McHhHLaB17V4XzHgS7AqtkM9mv9j+6yVWKZlJGeCl
+    6xA7Xo7NNpW6P3rih+aXIis0jwlLpx0Viv3AvnkCgYEAyI4yTGaiQzbUl7hUV0D+
+    NdrCO8PLXtAp7+QkwmP/HnYv0TKHNmE3dhN2ZDLvwmu6P+UNDBja6NHTgaK/DQti
+    8PNi6IIl8MSo+s8eYeEu2OS5N+zCT76Wt1TPuYbIDXY/dEfmkJTQR6J+WEddwKy2
+    VoqbWOQhCr/b5gBZ1sYTnug=
+    -----END PRIVATE KEY-----
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: local-ca
+spec:
+  ca:
+    secretName: local-ca

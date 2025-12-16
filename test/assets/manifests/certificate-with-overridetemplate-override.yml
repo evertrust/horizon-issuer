@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-with-overridetemplate-override
+  annotations:
+    horizon.evertrust.io/owner: user
+    horizon.evertrust.io/team: dx
+    horizon.evertrust.io/contact-email: test@rocket.com
+    horizon.evertrust.io/labels.environment: prod
+spec:
+  commonName: certificate-with-overridetemplate-override.org
+  secretName: certificate-with-overridetemplate-override
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: clusterissuer-with-overridetemplate
