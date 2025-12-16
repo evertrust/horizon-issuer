@@ -1,7 +1,9 @@
 package horizon
 
 import (
-	"github.com/evertrust/horizon-go"
+	"context"
+
+	"github.com/evertrust/horizon-go/v2"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -20,21 +22,21 @@ func HealthCheckerFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec,
 		return nil, err
 	}
 
-	return &HorizonHealthChecker{Client: *client}, nil
+	return &HorizonHealthChecker{Client: client}, nil
 }
 
 type HorizonHealthChecker struct {
-	Client horizon.Horizon
+	Client *horizon.APIClient
 }
 
 func (o *HorizonHealthChecker) Check() error {
-	url := o.Client.Http.BaseUrl()
 	logger := log.Log.
 		WithName("horizon.healthcheck").
-		WithValues("url", url.String())
+		WithValues("url", o.Client.GetConfig().Host)
 
 	logger.V(1).Info("Client setup")
-	_, err := o.Client.Http.Get("/api/v1/security/principals/self")
+
+	_, _, err := o.Client.SecurityPrincipalAPI.SecurityPrincipalSelf(context.Background()).Execute()
 	if err != nil {
 		logger.V(1).Info("Call to /api/v1/security/principals/self returned an error", "error", err.Error())
 		return err

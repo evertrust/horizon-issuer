@@ -30,13 +30,14 @@ import (
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/cert-manager/cert-manager/pkg/util/pki"
 	"github.com/evertrust/horizon-go/http"
-	"github.com/evertrust/horizon-go/requests"
+	"github.com/evertrust/horizon-go/v2"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,10 +60,17 @@ const FinalizerName = horizonissuer.IssuerNamespace + "/finalizer"
 type CertificateRequestReconciler struct {
 	client.Client
 	Scheme                   *runtime.Scheme
+	Recorder                 record.EventRecorder
 	ClusterResourceNamespace string
 	Clock                    clock.Clock
 	Issuer                   horizonissuer.HorizonIssuer
 }
+
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests;certificates,verbs=get;list;update;watch
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests/finalizers,verbs=update
+// +kubebuilder:rbac:groups=cert-manager.io,resources=certificaterequests/status,verbs=get;patch;update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := ctrl.LoggerFrom(ctx)
@@ -117,6 +125,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		log.Error(err, "Unable to get the IssuerStatus. Ignoring.")
 		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, err.Error())
+		r.Recorder.Event(&certificateRequest, corev1.EventTypeWarning, "Error", err.Error())
 		return ctrl.Result{}, nil
 	}
 
@@ -207,7 +216,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 				setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonFailed, "Invalid request")
 			}
 			certificateRequest.Status.FailureTime = &metav1.Time{Time: time.Now()}
-
+			r.Recorder.Event(&certificateRequest, corev1.EventTypeWarning, "Error", err.Error())
 		}
 
 		var updateErr, parentUpdateErr error
@@ -325,6 +334,13 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 			} else {
 				ctrl.LoggerFrom(ctx).Info(fmt.Sprintf("Horizon returned an error when revoking the certificate : %s. Marking the certificate as revoked to avoid a loop.", err.Error()))
 			}
+		} else {
+			issuer, issuerErr := r.issuerFromRequest(ctx, certificateRequest)
+			if issuerErr != nil {
+				ctrl.LoggerFrom(ctx).Info("Unable to fetch issuer to record revocation event", "error", issuerErr)
+			} else {
+				r.Recorder.Event(issuer, corev1.EventTypeNormal, "RevokedCertificate", fmt.Sprintf("Revoked certificate request %s on Horizon", certificateRequest.Name))
+			}
 		}
 
 		// remove our finalizer from the list and update it.
@@ -337,7 +353,7 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 	return nil
 }
 
-func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]requests.LabelElement, *string, *string, *string, error) {
+func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]horizon.RequestLabelElement, *string, *string, *string, error) {
 	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -402,8 +418,8 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 		case horizonissuer.ContactEmailAnnotation:
 			contactEmail = v
 		default:
-			if strings.HasPrefix(k, "horizon.evertrust.io/labels.") {
-				labels[strings.TrimPrefix(k, "horizon.evertrust.io/labels.")] = v
+			if strings.HasPrefix(k, fmt.Sprintf("%s.", horizonissuer.LabelAnnotation)) {
+				labels[strings.TrimPrefix(k, fmt.Sprintf("%s.", horizonissuer.LabelAnnotation))] = v
 			}
 		}
 	}
@@ -427,11 +443,13 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 	}
 
 	// Convert labels to LabelElements for Horizon
-	var labelElements []requests.LabelElement
+	var labelElements []horizon.RequestLabelElement
 	for k, v := range labels {
-		labelElements = append(labelElements, requests.LabelElement{
+		labelValue := &horizon.NullableString{}
+		labelValue.Set(&v)
+		labelElements = append(labelElements, horizon.RequestLabelElement{
 			Label: k,
-			Value: v,
+			Value: *labelValue,
 		})
 	}
 

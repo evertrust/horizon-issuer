@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -46,6 +47,7 @@ type IssuerReconciler struct {
 	client.Client
 	Kind                     string
 	Scheme                   *runtime.Scheme
+	Recorder                 record.EventRecorder
 	ClusterResourceNamespace string
 	HealthCheckerBuilder     horizonissuer.HealthCheckerBuilder
 	HealthCheckInterval      time.Duration
@@ -59,6 +61,14 @@ func (r *IssuerReconciler) newIssuer() (client.Object, error) {
 	}
 	return ro.(client.Object), nil
 }
+
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=horizon.evertrust.io,resources=issuers;clusterissuers,verbs=*
+// +kubebuilder:rbac:groups=horizon.evertrust.io,resources=issuers/finalizers;clusterissuers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=horizon.evertrust.io,resources=issuers/status;clusterissuers/status,verbs=get;patch;update
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=cert-manager.io,resources=signers,verbs=approve
 
 func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := ctrl.LoggerFrom(ctx)

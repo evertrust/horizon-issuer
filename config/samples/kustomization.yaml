@@ -1,5 +1,5 @@
 ## Append samples of your project ##
 resources:
-- v1beta1_clusterissuer.yaml
-- v1beta1_issuer.yaml
+- horizon.evertrust.io_v1beta1_clusterissuer.yaml
+- horizon.evertrust.io_v1beta1_issuer.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
