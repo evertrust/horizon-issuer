@@ -19,7 +19,9 @@ package util
 import (
 	"context"
 	"fmt"
+
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,42 +53,39 @@ func CertificateFromRequest(client client.Client, ctx context.Context, certifica
 	return &certificate, err
 }
 
-func SetReadyCondition(status *horizonapi.IssuerStatus, conditionStatus horizonapi.ConditionStatus, reason, message string) {
-	ready := GetReadyCondition(status)
-	if ready == nil {
-		ready = &horizonapi.IssuerCondition{
-			Type: horizonapi.IssuerConditionReady,
-		}
-		status.Conditions = append(status.Conditions, *ready)
+func SetReadyCondition(
+	obj metav1.Object,
+	conditions *[]metav1.Condition,
+	status metav1.ConditionStatus,
+	reason, message string,
+) {
+	cond := metav1.Condition{
+		Type:               string(horizonapi.IssuerConditionReady),
+		Status:             status,
+		ObservedGeneration: obj.GetGeneration(),
+		Reason:             reason,
+		Message:            message,
 	}
-	if ready.Status != conditionStatus {
-		ready.Status = conditionStatus
-		now := metav1.Now()
-		ready.LastTransitionTime = &now
-	}
-	ready.Reason = reason
-	ready.Message = message
 
-	for i, c := range status.Conditions {
-		if c.Type == horizonapi.IssuerConditionReady {
-			status.Conditions[i] = *ready
-			return
-		}
-	}
+	apimeta.SetStatusCondition(conditions, cond)
 }
 
-func GetReadyCondition(status *horizonapi.IssuerStatus) *horizonapi.IssuerCondition {
-	for _, c := range status.Conditions {
-		if c.Type == horizonapi.IssuerConditionReady {
-			return &c
-		}
+func GetReadyCondition(status *horizonapi.IssuerStatus) *metav1.Condition {
+	if status == nil {
+		return nil
 	}
-	return nil
+
+	cond := apimeta.FindStatusCondition(status.Conditions, string(horizonapi.IssuerConditionReady))
+	if cond == nil {
+		return nil
+	}
+	// apimeta.FindStatusCondition returns *metav1.Condition
+	return cond
 }
 
 func IsReady(status *horizonapi.IssuerStatus) bool {
 	if c := GetReadyCondition(status); c != nil {
-		return c.Status == horizonapi.ConditionTrue
+		return c.Status == metav1.ConditionTrue
 	}
 	return false
 }

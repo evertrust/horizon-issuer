@@ -1,5 +1,0 @@
-{{- if .Values.installCRDs }}
-{{- .Files.Get "manifests/horizon.evertrust.io_clusterissuers.yaml"  }}
----
-{{- .Files.Get "manifests/horizon.evertrust.io_issuers.yaml"  }}
-{{- end }}
