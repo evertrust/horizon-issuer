@@ -41,14 +41,14 @@ func GetSpecAndStatus(issuer client.Object) (*horizonapi.IssuerSpec, *horizonapi
 }
 
 // CertificateFromRequest returns the Certificate object associated with that CertificateRequest
-func CertificateFromRequest(client client.Client, ctx context.Context, certificateRequest *cmapi.CertificateRequest) (*cmapi.Certificate, error) {
+func CertificateFromRequest(k8sclient client.Client, ctx context.Context, certificateRequest *cmapi.CertificateRequest) (*cmapi.Certificate, error) {
 	certificateName := types.NamespacedName{
 		Namespace: certificateRequest.Namespace,
 		Name:      certificateRequest.Annotations["cert-manager.io/certificate-name"],
 	}
 
 	var certificate cmapi.Certificate
-	err := client.Get(ctx, certificateName, &certificate)
+	err := k8sclient.Get(ctx, certificateName, &certificate)
 
 	return &certificate, err
 }

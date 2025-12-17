@@ -30,7 +30,7 @@ import (
 	"github.com/tink-crypto/tink-go/v2/keyset"
 
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
-	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega"    // nolint:revive,staticcheck
 )
 
 const (
@@ -47,7 +47,7 @@ const (
 	horizonImageName      = "horizon"
 	horizonImageTag       = "2.8.0"
 	horizonLicensePath    = "test/assets/horizon.lic"
-	horizonAdminPassword  = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn."
+	horizonAdminPassword  = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn." //nolint:lll
 )
 
 func warnError(err error) {
@@ -238,13 +238,13 @@ func InstallHorizon() error {
 		return err
 	}
 
-	if keyset, err := GenerateTinkKeyset(); err != nil {
+	if horizonKeyset, err := GenerateTinkKeyset(); err != nil {
 		return err
 	} else {
 		cmd = exec.Command("kubectl", "create", "secret", "generic", "horizon-secrets",
 			"--namespace", horizonNamespace,
 			fmt.Sprintf("--from-file=license=%s", horizonLicensePath),
-			fmt.Sprintf("--from-literal=keyset=%s", keyset),
+			fmt.Sprintf("--from-literal=keyset=%s", horizonKeyset),
 			fmt.Sprintf("--from-literal=initialAdminHashPassword=%s", horizonAdminPassword),
 		)
 		if _, err := Run(cmd); err != nil {

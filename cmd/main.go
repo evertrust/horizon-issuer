@@ -21,7 +21,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -90,8 +89,10 @@ func main() {
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
-	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "", "The namespace for secrets in which cluster-scoped resources are found.")
-	flag.IntVar(&healthCheckInterval, "health-check-interval", 60, "Number of seconds between two successful Horizon health checks.")
+	flag.StringVar(&clusterResourceNamespace, "cluster-resource-namespace", "",
+		"The namespace for secrets in which cluster-scoped resources are found.")
+	flag.IntVar(&healthCheckInterval, "health-check-interval", 60,
+		"Number of seconds between two successful Horizon health checks.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{
@@ -276,7 +277,7 @@ func getInClusterNamespace() (string, error) {
 	}
 
 	// Load the namespace file and return its content
-	namespace, err := ioutil.ReadFile(inClusterNamespacePath)
+	namespace, err := os.ReadFile(inClusterNamespacePath)
 	if err != nil {
 		return "", fmt.Errorf("error reading namespace file: %w", err)
 	}

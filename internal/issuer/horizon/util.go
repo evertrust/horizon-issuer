@@ -43,7 +43,8 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 		config.SetProxyUrl(proxyUrl)
 	}
 
-	if secret.Type == corev1.SecretTypeTLS {
+	switch secret.Type {
+	case corev1.SecretTypeTLS:
 		if _, ok := secret.Data["tls.crt"]; !ok {
 			return nil, fmt.Errorf("%s: %v", "Missing tls.crt in secret", secret.Name)
 		}
@@ -56,7 +57,7 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 			return nil, fmt.Errorf("%s: %v", "Failed to load TLS certificate", err)
 		}
 		config.SetCertAuth(cert)
-	} else if secret.Type == corev1.SecretTypeOpaque {
+	case corev1.SecretTypeOpaque:
 		if _, ok := secret.Data["username"]; !ok {
 			return nil, fmt.Errorf("%s: %v", "Missing username in secret", secret.Name)
 		}
@@ -64,7 +65,7 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 			return nil, fmt.Errorf("%s: %v", "Missing password in secret", secret.Name)
 		}
 		config.SetPasswordAuth(string(secret.Data["username"]), string(secret.Data["password"]))
-	} else {
+	default:
 		return nil, fmt.Errorf("%s: %v", "Unsupported secret type", secret.Type)
 	}
 

@@ -86,7 +86,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, nil
 	}
 
-	log.V(1).Info(fmt.Sprintf("Started reconciliation loop"))
+	log.V(1).Info("Started reconciliation loop")
 
 	issuerSpec, issuerStatus, err := issuerutil.GetSpecAndStatus(issuer)
 	if err != nil {

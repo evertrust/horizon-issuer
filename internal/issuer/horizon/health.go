@@ -16,8 +16,8 @@ type HealthChecker interface {
 
 type HealthCheckerBuilder func(logr.Logger, *horizonapi.IssuerSpec, corev1.Secret) (*HorizonHealthChecker, error)
 
-func HealthCheckerFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*HorizonHealthChecker, error) {
-	client, err := ClientFromIssuer(log, issuerSpec, secret)
+func HealthCheckerFromIssuer(logger logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*HorizonHealthChecker, error) {
+	client, err := ClientFromIssuer(logger, issuerSpec, secret)
 	if err != nil {
 		return nil, err
 	}

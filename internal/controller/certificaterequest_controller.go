@@ -49,9 +49,8 @@ import (
 )
 
 var (
-	errIssuerRef      = errors.New("error interpreting issuerRef")
-	errGetIssuer      = errors.New("error getting issuer")
-	errIssuerNotReady = errors.New("issuer is not ready")
+	errIssuerRef = errors.New("error interpreting issuerRef")
+	errGetIssuer = errors.New("error getting issuer")
 )
 
 const FinalizerName = horizonissuer.IssuerNamespace + "/finalizer"
@@ -72,6 +71,7 @@ type CertificateRequestReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
+//nolint:gocyclo
 func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	log := ctrl.LoggerFrom(ctx)
 
@@ -156,7 +156,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if issuerSpec.RevokeCertificates {
 		// examine DeletionTimestamp to determine if object is under deletion
-		if certificateRequest.ObjectMeta.DeletionTimestamp.IsZero() {
+		if certificateRequest.DeletionTimestamp.IsZero() {
 			// The object is not being deleted, so if it does not have our finalizer,
 			// then lets add the finalizer and update the object. This is equivalent
 			// registering our finalizer.
@@ -287,7 +287,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			log.Info("Checking DNS name", "dnsName", dnsName)
 			_, err := resolver.LookupHost(context.Background(), dnsName)
 			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("Certificate failed the DNS validation: could not resolve %s on %s", dnsName, issuerSpec.DnsChecker.Server)
+				return ctrl.Result{}, fmt.Errorf("certificate failed the DNS validation: could not resolve %s on %s", dnsName, issuerSpec.DnsChecker.Server)
 			}
 		}
 	}
@@ -373,7 +373,7 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 
 	var owner, team, contactEmail string
 	var ownerPtr, teamPtr, contactEmailPtr *string = nil, nil, nil
-	var labels map[string]string = make(map[string]string)
+	var labels = make(map[string]string)
 
 	// Get default values from DefaultTemplate if it exists
 	if issuerSpec.DefaultTemplate != nil {
@@ -443,7 +443,7 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 	}
 
 	// Convert labels to LabelElements for Horizon
-	var labelElements []horizon.RequestLabelElement
+	labelElements := make([]horizon.RequestLabelElement, 0)
 	for k, v := range labels {
 		labelValue := &horizon.NullableString{}
 		labelValue.Set(&v)
