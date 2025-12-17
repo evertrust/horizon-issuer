@@ -1,5 +1,7 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+REPOSITORY ?= registry.evertrust.io/horizon-issuer
+TAG ?= $(shell $(MAKE) -s version)
+IMG ?= $(REPOSITORY):$(TAG)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -107,6 +109,10 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
 ##@ Build
+
+.PHONY: version
+version:
+	git describe --tags
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.

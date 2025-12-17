@@ -6,6 +6,10 @@ cliVersion: 4.10.1
 domain: horizon.evertrust.io
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: deploy/
 projectName: horizon-issuer
 repo: github.com/evertrust/horizon-issuer
 resources:
