@@ -46,7 +46,7 @@ jobs:
 
       - name: Lint Helm Chart
         run: |
-          helm lint ./dist/chart
+          helm lint ./deploy/chart
 
       - name: Install cert-manager via Helm (wait for readiness)
         run: |
