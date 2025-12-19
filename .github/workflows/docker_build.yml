@@ -5,6 +5,12 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Create a GitHub prerelease (e.g., beta/rc)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   release-please:
@@ -21,9 +27,9 @@ jobs:
         id: release
         uses: googleapis/release-please-action@v4
         with:
-          config-file: release-please-config.json
+          config-file: ${{ github.event.inputs.prerelease == 'true' && '.github/release-please-prerelease-config.json' || '.github/release-please-config.json' }}
           manifest-file: .release-please-manifest.json
-          target-branch: master
+          target-branch: ${{ github.ref_name }}
 
   build-and-push:
     runs-on: ubuntu-latest
