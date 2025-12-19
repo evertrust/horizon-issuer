@@ -4,10 +4,15 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    types:
+      - closed
+    paths:
+      - .release-please-manifest.json
   workflow_dispatch:
     inputs:
       prerelease:
-        description: "Create a GitHub prerelease (e.g., beta/rc)"
+        description: "Create a prerelease"
         required: false
         default: false
         type: boolean
@@ -29,7 +34,7 @@ jobs:
         with:
           config-file: ${{ github.event.inputs.prerelease == 'true' && '.github/release-please-prerelease-config.json' || '.github/release-please-config.json' }}
           manifest-file: .release-please-manifest.json
-          target-branch: ${{ github.ref_name }}
+          target-branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
 
   build-and-push:
     runs-on: ubuntu-latest
