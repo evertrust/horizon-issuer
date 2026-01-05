@@ -10,6 +10,8 @@ import (
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/evertrust/horizon-go/v2"
+	"github.com/evertrust/horizon-go/v2/models"
+	"github.com/evertrust/horizon-go/v2/utils"
 	"github.com/evertrust/horizon-issuer/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -32,38 +34,61 @@ type HorizonIssuer struct {
 // SubmitEnrollRequest is used to initially submit a decentralized enrollement request
 // to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
 // and sets an annotation on the CertificateRequest object to ensure it is not run again.
-func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.IssuerSpec, labels []horizon.RequestLabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.IssuerSpec, labels []models.RequestLabelElement, owner *string, team *string, contactEmail *string, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
 
-	template, _, err := r.Client.Requests.GetEnrollTemplateWithCsr(issuer.Profile, string(certificateRequest.Spec.Request)).Execute()
+	csr := string(certificateRequest.Spec.Request)
+	template, _, err := r.Client.RequestAPI.RequestTemplate(ctx).
+		RequestTemplateRequest(models.WebRAEnrollRequestOnTemplateAsRequestTemplateRequest(&models.WebRAEnrollRequestOnTemplate{
+			Module:         string(models.MODULE_WEBRA),
+			Workflow:       string(models.WORKFLOW_ENROLL),
+			Profile:        *utils.NewNullableString(&issuer.Profile),
+			CertificatePem: *utils.NewNullableString(&csr),
+		})).
+		Execute()
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	ownerElement := &horizon.NullableString{}
-	ownerElement.Set(owner)
-	template.Owner = horizon.CertificateOwnerElement{Value: *ownerElement}
-
-	teamElement := &horizon.NullableString{}
-	teamElement.Set(team)
-	template.Team = horizon.CertificateTeamElement{Value: *teamElement}
-
-	contactEmailElement := &horizon.NullableString{}
-	contactEmailElement.Set(contactEmail)
-	template.ContactEmail = horizon.CertificateContactEmailElement{Value: *contactEmailElement}
-
+	var req models.WebRAEnrollRequestOnSubmit
+	// Fill values from the template
+	req.SetWorkflow(template.WebRAEnrollRequestOnTemplateResponse.GetWorkflow())
+	req.SetModule(template.WebRAEnrollRequestOnTemplateResponse.GetModule())
+	req.SetProfile(template.WebRAEnrollRequestOnTemplateResponse.GetProfile())
+	req.Template.SetSubject(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject())
+	req.Template.SetSans(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans())
+	req.Template.SetExtensions(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions())
+	req.Template.SetLabels(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels())
+	req.Template.SetContactEmail(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail())
+	req.Template.SetOwner(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner())
+	req.Template.SetTeam(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam())
+	req.Template.SetMetadata(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata())
+	req.Template.SetCsr(string(certificateRequest.Spec.Request))
+	// Override those who are set from cert-manager
+	if owner != nil {
+		req.Template.Owner.Get().SetValue(*owner)
+	}
+	if team != nil {
+		req.Template.Team.Get().SetValue(*team)
+	}
+	if contactEmail != nil {
+		req.Template.ContactEmail.Get().SetValue(*contactEmail)
+	}
 	// We don't merge labels with whats returned from the template
-	template.Labels = labels
+	req.Template.SetLabels(labels)
 
-	request, _, err := r.Client.Requests.SubmitEnroll(issuer.Profile, "", template).Execute()
+	request, _, err := r.Client.RequestAPI.RequestSubmit(ctx).
+		RequestSubmitRequest(models.WebRAEnrollRequestOnSubmitAsRequestSubmitRequest(&req)).
+		Execute()
+
 	if err != nil {
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
 	// Update the request with the Horizon request ID
-	certificateRequest.Annotations[RequestIdAnnotation] = request.Id
+	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -81,20 +106,23 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 
 	logger.Info(fmt.Sprintf("Submitting renewal request %s to profile %s", certificateRequest.UID, issuer.Profile))
 
-	template, _, err := r.Client.Requests.GetRenewTemplateWithCertificateId(lastCertificateId).Execute()
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	template.Csr = string(certificateRequest.Spec.Request)
-
-	request, _, err := r.Client.Requests.SubmitRenewWithCertificateId(lastCertificateId, "", template).Execute()
+	csr := string(certificateRequest.Spec.Request)
+	request, _, err := r.Client.RequestAPI.RequestSubmit(ctx).
+		RequestSubmitRequest(models.WebRARenewRequestOnSubmitAsRequestSubmitRequest(&models.WebRARenewRequestOnSubmit{
+			Module:        string(models.MODULE_WEBRA),
+			Workflow:      string(models.WORKFLOW_RENEW),
+			CertificateId: *utils.NewNullableString(&lastCertificateId),
+			Template: &models.WebRARenewRequestTemplate{
+				Csr: *utils.NewNullableString(&csr),
+			},
+		})).
+		Execute()
 	if err != nil {
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
 	// Update the request with the Horizon request ID
-	certificateRequest.Annotations[RequestIdAnnotation] = request.Id
+	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -112,34 +140,30 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
-	request, _, err := r.Client.Requests.GetEnrollRequest(certificateRequest.Annotations[RequestIdAnnotation]).Execute()
+	request, _, err := r.Client.RequestAPI.RequestGet(ctx, certificateRequest.Annotations[RequestIdAnnotation]).Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to fetch request from Horizon"), err)
 	}
 
-	logger.Info(fmt.Sprintf("Handling %s request %s", request.Status, certificateRequest.UID))
-	switch request.Status {
-	case horizon.REQUESTSTATUS_COMPLETED:
-		return r.handleCompletedRequest(request, certificateRequest)
-	case horizon.REQUESTSTATUS_PENDING, horizon.REQUESTSTATUS_APPROVED:
+	logger.Info(fmt.Sprintf("Handling %s request %s", request.WebRAEnrollRequestOnApproveResponse.Status, certificateRequest.UID))
+	switch request.WebRAEnrollRequestOnApproveResponse.Status {
+	case models.REQUESTSTATUS_COMPLETED:
+		return r.handleCompletedRequest(request.WebRAEnrollRequestOnApproveResponse, certificateRequest)
+	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
 		return r.handlePendingRequest()
-	case horizon.REQUESTSTATUS_DENIED, horizon.REQUESTSTATUS_CANCELED:
+	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
-	return ctrl.Result{}, errors.New("invalid request status " + string(request.Status))
+	return ctrl.Result{}, errors.New("invalid request status " + string(request.WebRAEnrollRequestOnApproveResponse.Status))
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
-	_, _, err := r.Client.Requests.SubmitRevokeWithCertificatePem(
-		string(certificateRequest.Status.Certificate),
-		&horizon.WebraRevokeTemplate{
-			RevocationReason: "UNSPECIFIED",
-		},
-	).Execute()
+	req := *models.NewWebRARevokeRequestOnSubmit(*models.NewWebRARevokeRequestTemplate(), string(models.WORKFLOW_REVOKE))
+	_, _, err := r.Client.RequestAPI.RequestSubmit(ctx).RequestSubmitRequest(models.WebRARevokeRequestOnSubmitAsRequestSubmitRequest(&req)).Execute()
 
 	return err
 }
@@ -176,7 +200,7 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) handleCompletedRequest(request *horizon.WebRAEnrollResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnApproveResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionApproved,
@@ -185,7 +209,7 @@ func (r *HorizonIssuer) handleCompletedRequest(request *horizon.WebRAEnrollRespo
 		"Request approved on Horizon",
 	)
 
-	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.Certificate.Certificate).Order("ltr").Execute()
+	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
 	}
@@ -196,12 +220,12 @@ func (r *HorizonIssuer) handleCompletedRequest(request *horizon.WebRAEnrollRespo
 			certificateRequest.Status.CA = []byte(ca)
 		}
 		if certificate != "" {
-			certificateRequest.Annotations[CertificateIdAnnotation] = request.Certificate.Id
-			certificateRequest.Annotations[OwnerAnnotation] = request.Certificate.GetOwner()
-			certificateRequest.Annotations[TeamAnnotation] = request.Certificate.GetTeam()
-			certificateRequest.Annotations[ContactEmailAnnotation] = request.Certificate.GetContactEmail()
-			for _, label := range request.Certificate.Labels {
-				certificateRequest.Annotations[fmt.Sprintf("%s.%s", LabelAnnotation, label.Key)] = label.Value
+			certificateRequest.Annotations[CertificateIdAnnotation] = request.Certificate.Get().GetId()
+			certificateRequest.Annotations[OwnerAnnotation] = request.Certificate.Get().GetOwner()
+			certificateRequest.Annotations[TeamAnnotation] = request.Certificate.Get().GetTeam()
+			certificateRequest.Annotations[ContactEmailAnnotation] = request.Certificate.Get().GetContactEmail()
+			for _, label := range request.Certificate.Get().GetLabels() {
+				certificateRequest.Annotations[fmt.Sprintf("%s.%s", LabelAnnotation, label.GetKey())] = label.GetValue()
 			}
 
 			certificateRequest.Status.Certificate = []byte(certificate)
