@@ -5,6 +5,7 @@
       "release-type": "go",
       "versioning": "prerelease",
       "prerelease-type": "alpha",
+      "include-component-in-tag": false,
       "include-v-in-tag": true,
       "package-name": "horizon-issuer",
       "changelog-path": "CHANGELOG.md",
