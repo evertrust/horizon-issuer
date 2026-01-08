@@ -7,6 +7,7 @@ import (
 	"net/url"
 
 	"github.com/evertrust/horizon-go/v2"
+	"github.com/evertrust/horizon-go/v2/models"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -73,10 +74,10 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 	return client, nil
 }
 
-// BuildPemTrustchain constructs a PEM-encoded leaf-to-root trust chain, given a collection
+// buildPemTrustchain constructs a PEM-encoded leaf-to-root trust chain, given a collection
 // of rfc5280.CfCertificate objects in the leaf-to-root order. If present at the end of the chain,
 // the certification authority will also be returned.
-func BuildPemTrustchain(certs []horizon.CFCertificateResponse) (chain string, ca string) {
+func buildPemTrustchain(certs []models.CFCertificateResponse) (chain string, ca string) {
 	for i, certificate := range certs {
 		if i == len(certs)-1 {
 			if certificate.SelfSigned {

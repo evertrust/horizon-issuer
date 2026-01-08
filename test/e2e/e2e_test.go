@@ -20,7 +20,10 @@ limitations under the License.
 package e2e
 
 import (
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"os/exec"
@@ -321,6 +324,63 @@ var _ = Describe("Manager", Ordered, func() {
 		It("can issue a valid certificate", func() {
 			utils.ApplyManifest("test/assets/manifests/valid-certificate.yml")
 			Eventually(utils.WaitForCertificateReady("valid-certificate"), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("ensuring the ca chain gets injected in the secret")
+			verifyInjectedCAChain := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", "valid-certificate", "-o", "json")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				var secret struct {
+					Data map[string]string `json:"data"`
+				}
+				g.Expect(json.Unmarshal([]byte(output), &secret)).To(Succeed())
+
+				caBundleBase64, ok := secret.Data["ca.crt"]
+				g.Expect(ok).To(BeTrue(), "expected ca.crt in secret")
+				tlsChainBase64, ok := secret.Data["tls.crt"]
+				g.Expect(ok).To(BeTrue(), "expected tls.crt in secret")
+
+				caBundle, err := base64.StdEncoding.DecodeString(caBundleBase64)
+				g.Expect(err).NotTo(HaveOccurred())
+				caBlock, _ := pem.Decode(caBundle)
+				g.Expect(caBlock).NotTo(BeNil(), "ca.crt should be PEM encoded")
+				g.Expect(caBlock.Type).To(Equal("CERTIFICATE"), "ca.crt should contain a certificate PEM")
+				caCert, err := x509.ParseCertificate(caBlock.Bytes)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(caCert.IsCA).To(BeTrue(), "ca.crt should be a CA certificate")
+
+				tlsChain, err := base64.StdEncoding.DecodeString(tlsChainBase64)
+				g.Expect(err).NotTo(HaveOccurred())
+				var certs []*x509.Certificate
+				for {
+					var block *pem.Block
+					block, tlsChain = pem.Decode(tlsChain)
+					if block == nil {
+						break
+					}
+					if block.Type != "CERTIFICATE" {
+						continue
+					}
+					cert, parseErr := x509.ParseCertificate(block.Bytes)
+					g.Expect(parseErr).NotTo(HaveOccurred())
+					certs = append(certs, cert)
+				}
+
+				g.Expect(len(certs)).To(BeNumerically(">=", 2), "tls.crt should contain at least two certificates")
+				hasIntermediate := false
+				hasLeaf := false
+				for _, cert := range certs {
+					if cert.IsCA {
+						hasIntermediate = true
+						continue
+					}
+					hasLeaf = true
+				}
+				g.Expect(hasIntermediate).To(BeTrue(), "tls.crt should include an intermediate CA certificate")
+				g.Expect(hasLeaf).To(BeTrue(), "tls.crt should include the leaf certificate")
+			}
+			Eventually(verifyInjectedCAChain, 2*time.Minute, 5*time.Second).Should(Succeed())
 		})
 
 		It("can issue a certificate from an ingress with metadata", func() {
@@ -368,22 +428,21 @@ var _ = Describe("Manager", Ordered, func() {
 			utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-override-1", expectedAnnotations)
 		})
 
-		// TODO: currently broken by the SDK
-		// It("can renew a certificate", func() {
-		// 	By("issuing a initial certificate")
-		// 	utils.ApplyManifest("test/assets/manifests/certificate-to-renew.yml")
-		// 	Eventually(utils.WaitForCertificateReady("certificate-to-renew"), 3*time.Minute, time.Second).Should(Succeed())
+		It("can renew a certificate", func() {
+			By("issuing a initial certificate")
+			utils.ApplyManifest("test/assets/manifests/certificate-to-renew.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-to-renew"), 3*time.Minute, time.Second).Should(Succeed())
 
-		// 	By("manually triggering the renew of the certificate")
-		// 	patch := `{"status":{"conditions":[{"type":"Issuing","status":"True","reason":"ManuallyTriggered","message":"Certificate re-issuance manually triggered","observedGeneration":2}]}}`
-		// 	cmd := exec.Command("kubectl", "patch", "certificate", "certificate-to-renew",
-		// 		"--type=merge", "--subresource=status", "-p", patch)
-		// 	_, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to trigger renewal")
+			By("manually triggering the renew of the certificate")
+			patch := `{"status":{"conditions":[{"type":"Issuing","status":"True","reason":"ManuallyTriggered","message":"Certificate re-issuance manually triggered","observedGeneration":2}]}}`
+			cmd := exec.Command("kubectl", "patch", "certificate", "certificate-to-renew",
+				"--type=merge", "--subresource=status", "-p", patch)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to trigger renewal")
 
-		// 	By("waiting for the certificate to be re-issued")
-		// 	Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
-		// })
+			By("waiting for the certificate to be re-issued")
+			Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
+		})
 
 		// TODO: currently not implemented
 		// It("can update a certificate", func() {

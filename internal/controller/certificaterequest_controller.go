@@ -29,8 +29,8 @@ import (
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	"github.com/cert-manager/cert-manager/pkg/util/pki"
-	"github.com/evertrust/horizon-go/http"
-	"github.com/evertrust/horizon-go/v2"
+	"github.com/evertrust/horizon-go/v2/models"
+	"github.com/evertrust/horizon-go/v2/utils"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -327,13 +327,7 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 	if controllerutil.ContainsFinalizer(certificateRequest, FinalizerName) {
 		// our finalizer is present, so lets handle any external dependency
 		if err := r.Issuer.RevokeCertificate(ctx, certificateRequest); err != nil {
-			// if fail to delete the external dependency here, return with error
-			// so that it can be retried, except if the error is from Horizon
-			if _, isHorizonError := err.(*http.HorizonErrorResponse); !isHorizonError {
-				return err
-			} else {
-				ctrl.LoggerFrom(ctx).Info(fmt.Sprintf("Horizon returned an error when revoking the certificate : %s. Marking the certificate as revoked to avoid a loop.", err.Error()))
-			}
+			return err
 		} else {
 			issuer, issuerErr := r.issuerFromRequest(ctx, certificateRequest)
 			if issuerErr != nil {
@@ -353,7 +347,7 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 	return nil
 }
 
-func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]horizon.RequestLabelElement, *string, *string, *string, error) {
+func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, certificateRequest *cmapi.CertificateRequest) ([]models.RequestLabelElement, *string, *string, *string, error) {
 	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, certificateRequest)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -443,11 +437,11 @@ func (r *CertificateRequestReconciler) certificateMetadata(ctx context.Context, 
 	}
 
 	// Convert labels to LabelElements for Horizon
-	labelElements := make([]horizon.RequestLabelElement, 0)
+	labelElements := make([]models.RequestLabelElement, 0)
 	for k, v := range labels {
-		labelValue := &horizon.NullableString{}
+		labelValue := &utils.NullableString{}
 		labelValue.Set(&v)
-		labelElements = append(labelElements, horizon.RequestLabelElement{
+		labelElements = append(labelElements, models.RequestLabelElement{
 			Label: k,
 			Value: *labelValue,
 		})
