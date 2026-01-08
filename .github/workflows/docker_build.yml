@@ -64,12 +64,12 @@ jobs:
 
       - name: Package chart
         run: |
-          helm package dist/chart --destination dist
+          helm package deploy/chart --destination dist
 
       - name: Upload to Sonatype repo
         env:
           NEXUS_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           NEXUS_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: |
-          PACKAGE="$(find charts/horizon-issuer -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
+          PACKAGE="$(find dist/ -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
           curl -F file=@$PACKAGE --user "$NEXUS_USERNAME:$NEXUS_PASSWORD" --fail https://repo.evertrust.io/service/rest/v1/components?repository=charts
