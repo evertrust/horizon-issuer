@@ -39,13 +39,15 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 
 	logger.Info(fmt.Sprintf("Submitting enrollment request %s to profile %s", certificateRequest.UID, issuer.Profile))
 
-	csr := string(certificateRequest.Spec.Request)
+	templateMap := make(map[string]interface{})
+	templateMap["csr"] = string(certificateRequest.Spec.Request)
+
 	template, _, err := r.Client.RequestAPI.RequestTemplate(ctx).
 		RequestTemplateRequest(models.WebRAEnrollRequestOnTemplateAsRequestTemplateRequest(&models.WebRAEnrollRequestOnTemplate{
-			Module:         string(models.MODULE_WEBRA),
-			Workflow:       string(models.WORKFLOW_ENROLL),
-			Profile:        *utils.NewNullableString(&issuer.Profile),
-			CertificatePem: *utils.NewNullableString(&csr),
+			Module:   string(models.MODULE_WEBRA),
+			Workflow: string(models.WORKFLOW_ENROLL),
+			Profile:  *utils.NewNullableString(&issuer.Profile),
+			Template: &templateMap,
 		})).
 		Execute()
 	if err != nil {
@@ -162,8 +164,13 @@ func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateReques
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
-	req := *models.NewWebRARevokeRequestOnSubmit(*models.NewWebRARevokeRequestTemplate(), string(models.WORKFLOW_REVOKE))
-	_, _, err := r.Client.RequestAPI.RequestSubmit(ctx).RequestSubmitRequest(models.WebRARevokeRequestOnSubmitAsRequestSubmitRequest(&req)).Execute()
+	certificatePem := string(certificateRequest.Status.Certificate)
+	_, _, err := r.Client.RequestAPI.RequestSubmit(ctx).
+		RequestSubmitRequest(models.WebRARevokeRequestOnSubmitAsRequestSubmitRequest(&models.WebRARevokeRequestOnSubmit{
+			Workflow:       string(models.WORKFLOW_REVOKE),
+			CertificatePem: *utils.NewNullableString(&certificatePem),
+		})).
+		Execute()
 
 	return err
 }
@@ -238,7 +245,7 @@ func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollReques
 			)
 		}
 	}()
-	certificate, ca = BuildPemTrustchain(resp)
+	certificate, ca = buildPemTrustchain(resp)
 
 	// We don't requeue this request since it is completed
 	return ctrl.Result{}, nil

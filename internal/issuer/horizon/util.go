@@ -74,10 +74,10 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 	return client, nil
 }
 
-// BuildPemTrustchain constructs a PEM-encoded leaf-to-root trust chain, given a collection
+// buildPemTrustchain constructs a PEM-encoded leaf-to-root trust chain, given a collection
 // of rfc5280.CfCertificate objects in the leaf-to-root order. If present at the end of the chain,
 // the certification authority will also be returned.
-func BuildPemTrustchain(certs []models.CFCertificateResponse) (chain string, ca string) {
+func buildPemTrustchain(certs []models.CFCertificateResponse) (chain string, ca string) {
 	for i, certificate := range certs {
 		if i == len(certs)-1 {
 			if certificate.SelfSigned {

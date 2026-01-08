@@ -368,22 +368,21 @@ var _ = Describe("Manager", Ordered, func() {
 			utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-override-1", expectedAnnotations)
 		})
 
-		// TODO: currently broken by the SDK
-		// It("can renew a certificate", func() {
-		// 	By("issuing a initial certificate")
-		// 	utils.ApplyManifest("test/assets/manifests/certificate-to-renew.yml")
-		// 	Eventually(utils.WaitForCertificateReady("certificate-to-renew"), 3*time.Minute, time.Second).Should(Succeed())
+		It("can renew a certificate", func() {
+			By("issuing a initial certificate")
+			utils.ApplyManifest("test/assets/manifests/certificate-to-renew.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-to-renew"), 3*time.Minute, time.Second).Should(Succeed())
 
-		// 	By("manually triggering the renew of the certificate")
-		// 	patch := `{"status":{"conditions":[{"type":"Issuing","status":"True","reason":"ManuallyTriggered","message":"Certificate re-issuance manually triggered","observedGeneration":2}]}}`
-		// 	cmd := exec.Command("kubectl", "patch", "certificate", "certificate-to-renew",
-		// 		"--type=merge", "--subresource=status", "-p", patch)
-		// 	_, err := utils.Run(cmd)
-		// 	Expect(err).NotTo(HaveOccurred(), "Failed to trigger renewal")
+			By("manually triggering the renew of the certificate")
+			patch := `{"status":{"conditions":[{"type":"Issuing","status":"True","reason":"ManuallyTriggered","message":"Certificate re-issuance manually triggered","observedGeneration":2}]}}`
+			cmd := exec.Command("kubectl", "patch", "certificate", "certificate-to-renew",
+				"--type=merge", "--subresource=status", "-p", patch)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to trigger renewal")
 
-		// 	By("waiting for the certificate to be re-issued")
-		// 	Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
-		// })
+			By("waiting for the certificate to be re-issued")
+			Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
+		})
 
 		// TODO: currently not implemented
 		// It("can update a certificate", func() {
