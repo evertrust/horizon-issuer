@@ -1,0 +1,22 @@
+{{- if .Values.rbacHelpers.enable }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+    labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/name: horizon-issuer
+    name: horizon-issuer-issuer-admin-role
+rules:
+    - apiGroups:
+        - horizon.evertrust.io
+      resources:
+        - issuers
+      verbs:
+        - '*'
+    - apiGroups:
+        - horizon.evertrust.io
+      resources:
+        - issuers/status
+      verbs:
+        - get
+{{- end }}

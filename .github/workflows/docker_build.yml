@@ -1,0 +1,75 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - closed
+    paths:
+      - .release-please-manifest.json
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Create a prerelease"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: ${{ github.event.inputs.prerelease == 'true' && '.github/release-please-prerelease-config.json' || '.github/release-please-config.json' }}
+          manifest-file: .release-please-manifest.json
+          target-branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Login to registry
+        uses: docker/login-action@v2
+        with:
+          registry: registry.evertrust.io
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        run: make docker-build docker-push
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package chart
+        run: |
+          helm package deploy/chart --destination dist
+
+      - name: Upload to Sonatype repo
+        env:
+          NEXUS_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          PACKAGE="$(find dist/ -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
+          curl -F file=@$PACKAGE --user "$NEXUS_USERNAME:$NEXUS_PASSWORD" --fail https://repo.evertrust.io/service/rest/v1/components?repository=charts
