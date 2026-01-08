@@ -4,7 +4,7 @@ manager:
 
   image:
     repository: registry.evertrust.io/horizon-issuer
-    tag: "v0.3.2-12-ge88d457"
+    tag: ""
     pullPolicy: IfNotPresent
 
   # Arguments
