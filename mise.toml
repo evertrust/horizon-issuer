@@ -1,9 +1,10 @@
 [tools]
-go = "1.25"
+go = "1.25.6"
 "aqua:helm/helm" = "4.1.0"
 "aqua:kubernetes-sigs/kind" = "0.31.0"
 "aqua:golangci/golangci-lint" = "v2.8.0"
 "aqua:kubernetes-sigs/kustomize" = "5.8.0"
+"aqua:kubernetes-sigs/kubebuilder" = "4.11.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.19.0"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "release-0.22"
 
