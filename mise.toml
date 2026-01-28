@@ -1,0 +1,135 @@
+[tools]
+go = "1.25"
+"aqua:helm/helm" = "4.1.0"
+"aqua:kubernetes-sigs/kind" = "0.31.0"
+"aqua:golangci/golangci-lint" = "v2.8.0"
+"aqua:kubernetes-sigs/kustomize" = "5.8.0"
+"go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.19.0"
+"go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "release-0.22"
+
+[env]
+KIND_CLUSTER = "horizon-issuer-test-e2e"
+
+[vars]
+repository = "registry.evertrust.io/horizon-issuer"
+tag = "{{ exec(command='git describe --tags') }}"
+image = "{{vars.repository}}:{{vars.tag}}"
+platforms = "linux/arm64,linux/amd64,linux/s390x"
+
+[tasks."lint:chart"]
+description = "Lint Helm chart"
+run = "helm lint ./deploy/chart"
+
+[tasks."lint:vet"]
+description = "Run go vet against code."
+run = "go vet ./..."
+
+[tasks."lint:fmt"]
+description = "Run go fmt against code."
+run = "go fmt ./..."
+
+[tasks."lint:go"]
+description = "Lint Go code"
+run = "golangci-lint run"
+
+[tasks.lint]
+description = "Lint project"
+depends = ["lint:*"]
+
+[tasks."generate:go"]
+description = "Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations"
+run = "controller-gen object:headerFile=\"hack/boilerplate.go.txt\" paths=\"./...\""
+
+[tasks."generate:manifests"]
+description = "Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects."
+run = "controller-gen rbac:roleName=manager-role crd webhook paths=\"./...\" output:crd:artifacts:config=config/crd/bases"
+
+[tasks.generate]
+description = "Generate"
+depends = ["generate:*"]
+
+[tasks."build:binary"]
+description = "Build horizon-issuer binary"
+depends = ["lint:fmt", "generate"]
+run = "go build -o dist/horizon-issuer cmd/main.go"
+
+[tasks."build:chart"]
+description = "Build the Helm chart"
+run = "helm package deploy/chart --destination dist"
+
+[tasks.setup-kind-cluster]
+hide = true
+description = "Setup environment for end-to-end testing"
+run = "kind create cluster --name $KIND_CLUSTER"
+
+[tasks.cleanup-kind-cluster]
+hide = true
+description = "Cleanup environment for end-to-end testing"
+run = "kind delete cluster --name $KIND_CLUSTER"
+
+[tasks.setup-envtest]
+hide = true
+description = "Setup envtest binaries"
+usage = '''
+arg "<version>" help="Kubernetes version" default="1.34"
+'''
+run = "setup-envtest use ${usage_version} --bin-dir bin"
+
+[tasks."test:integration"]
+description = "Run integration tests using envtest"
+depends = ["setup-envtest"]
+run = "go test ./... -coverprofile cover.out"
+
+[tasks."test:e2e"]
+description = "Run end-to-end testing"
+depends = ["setup-kind-cluster"]
+depends_post = ["cleanup-kind-cluster"]
+run = "go test -tags=e2e ./test/e2e/ -v -ginkgo.v"
+
+[tasks."test:helm"]
+description = "Run Helm tests"
+depends = ["setup-kind-cluster", "build:docker horizon-issuer:dev"]
+depends_post = ["cleanup-kind-cluster"]
+run = [
+    "kind load docker-image horizon-issuer:dev --name $KIND_CLUSTER",
+    "helm install cert-manager cert-manager --repo https://charts.jetstack.io --namespace cert-manager --create-namespace --set crds.enabled=true --wait --timeout 300s",
+    "helm install my-release ./deploy/chart --create-namespace --namespace horizon-issuer-system",
+    "helm status my-release --namespace horizon-issuer-system"
+]
+
+[tasks."build:docker"]
+description = "Build a single-arch container"
+depends = ["lint:fmt", "generate"]
+usage = '''
+arg "<tag>" help="Container image tag" default="{{vars.image}}"
+'''
+run = "docker build --tag ${usage_tag} ."
+
+[tasks."setup-buildx-builder"]
+hide = true
+description = "Setup a buildx local builder"
+run = "docker buildx create --name horizon-issuer-builder --use"
+
+[tasks."build:docker-buildx"]
+description = "Build and push a multi-arch container"
+usage = '''
+arg "<tag>" help="Container image tag" default="{{vars.image}}"
+'''
+depends = ["setup-buildx-builder"]
+depends_post = ["cleanup-buildx-builder"]
+run = "docker buildx build --push --platform={{vars.platforms}} --tag ${usage_tag} ."
+
+[tasks."cleanup-buildx-builder"]
+hide = true
+description = "Remove the buildx local builder"
+run = "docker buildx rm horizon-issuer-builder"
+
+[tasks."publish:chart"]
+description = "Push the built chart"
+depends = ["build:chart"]
+env.PACKAGE = "{{ exec(command='find dist/ -type f -name \"horizon-issuer-*.tgz\" -maxdepth 1 | head -n 1') }}"
+run = "curl -F file=@$PACKAGE --user \"$NEXUS_USERNAME:$NEXUS_PASSWORD\" --fail https://repo.evertrust.io/service/rest/v1/components?repository=charts"
+
+[tasks.release]
+description = "Release assets after a tag"
+depends = ["build:docker-buildx", "publish:chart"]
