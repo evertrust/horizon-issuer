@@ -12,7 +12,7 @@ KIND_CLUSTER = "horizon-issuer-test-e2e"
 
 [vars]
 repository = "registry.evertrust.io/horizon-issuer"
-tag = "{{ exec(command='git describe --tags') }}"
+tag = "{{ exec(command='git describe --tags --always') }}"
 image = "{{vars.repository}}:{{vars.tag}}"
 platforms = "linux/arm64,linux/amd64,linux/s390x"
 
