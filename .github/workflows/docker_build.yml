@@ -56,20 +56,8 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build and push image
-        run: make docker-build docker-push
+      - name: Setup Mise
+        uses: jdx/mise-action@v2
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Package chart
-        run: |
-          helm package deploy/chart --destination dist
-
-      - name: Upload to Sonatype repo
-        env:
-          NEXUS_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          NEXUS_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-        run: |
-          PACKAGE="$(find dist/ -type f -name 'horizon-issuer-*.tgz' -maxdepth 1 | head -n 1)"
-          curl -F file=@$PACKAGE --user "$NEXUS_USERNAME:$NEXUS_PASSWORD" --fail https://repo.evertrust.io/service/rest/v1/components?repository=charts
+      - name: Release assets
+        run: mise release
