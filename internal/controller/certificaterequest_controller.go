@@ -270,8 +270,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, fmt.Errorf("%w", err)
 		}
 
-		toCheck := []string{csr.Subject.CommonName}
-		toCheck = append(toCheck, csr.DNSNames...)
+		toCheck := append([]string{csr.Subject.CommonName}, csr.DNSNames...)
 
 		// check if the SANs are valid
 		resolver := &net.Resolver{
