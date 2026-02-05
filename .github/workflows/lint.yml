@@ -21,3 +21,4 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           install-mode: none # golangci-lint is managed by Mise
+          problem-matchers: true # required since we don't use actions/setup-go
