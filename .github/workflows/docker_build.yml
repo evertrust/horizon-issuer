@@ -60,4 +60,4 @@ jobs:
         uses: jdx/mise-action@v2
 
       - name: Release assets
-        run: mise release
+        run: mise publish
