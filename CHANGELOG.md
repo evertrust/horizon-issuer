@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.0-alpha.2](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.1...v1.0.0-alpha.2) (2026-02-10)
+
+
+### Features
+
+* migrate to kubebuilder v4 ([b528332](https://github.com/evertrust/horizon-issuer/commit/b52833254ae6ed0361b80ce13606388885297d58))
+* use the horizon go sdk ([b2173e4](https://github.com/evertrust/horizon-issuer/commit/b2173e49c97408e20fbcbaaa5a2114cb266d5773))
+
+
+### Bug Fixes
+
+* **issuer:** fix annotations on ingress and certificates ([#17](https://github.com/evertrust/horizon-issuer/issues/17)) ([f14cbc3](https://github.com/evertrust/horizon-issuer/commit/f14cbc3a06932eab5fa0935c53f640f9767b230a))
+* **rbac:** give get,list and watch verbs on ingresses ([47aa1c5](https://github.com/evertrust/horizon-issuer/commit/47aa1c51ce1cef3436aa266897e429b176ac158d))
+* **rbac:** give get,list and watch verbs on ingresses ([1c6c1a7](https://github.com/evertrust/horizon-issuer/commit/1c6c1a7658948e7037c402a118b238174a9320f9))
+* set failure time upon failure ([#16](https://github.com/evertrust/horizon-issuer/issues/16)) ([303d245](https://github.com/evertrust/horizon-issuer/commit/303d245624ed6e9424020a969a61c889ae1a5b4e))
+
 ## [1.0.0-alpha.1](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.1...v1.0.0-alpha.1) (2026-01-08)
 
 
