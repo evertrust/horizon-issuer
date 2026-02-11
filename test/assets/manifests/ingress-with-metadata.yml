@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-with-metadata
+  annotations:
+    cert-manager.io/issuer-group: horizon.evertrust.io
+    cert-manager.io/issuer-kind: ClusterIssuer
+    cert-manager.io/issuer: valid-clusterissuer
+    cert-manager.io/common-name: ingress-with-metadata.org
+    horizon.evertrust.io/owner: administrator
+    horizon.evertrust.io/team: rocket
+    horizon.evertrust.io/contact-email: user@rocket.com
+    horizon.evertrust.io/labels.environment: staging
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: test
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - ingress-with-metadata.org
+      secretName: ingress-with-metadata

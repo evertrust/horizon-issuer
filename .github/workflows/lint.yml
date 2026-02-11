@@ -1,0 +1,24 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  lint:
+    name: Run on Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+
+      - name: Setup Mise
+        uses: jdx/mise-action@v2
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v9
+        with:
+          install-mode: none # golangci-lint is managed by Mise
+          problem-matchers: true # required since we don't use actions/setup-go

@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-with-metadata
+  annotations:
+    horizon.evertrust.io/owner: administrator
+    horizon.evertrust.io/team: rocket
+    horizon.evertrust.io/contact-email: user@rocket.com
+    horizon.evertrust.io/labels.environment: staging
+spec:
+  commonName: certificate-with-metadata.org
+  secretName: certificate-with-metadata
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: valid-clusterissuer

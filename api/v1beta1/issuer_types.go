@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,15 +91,29 @@ type IssuerDnsChecker struct {
 	Server string `json:"server"`
 }
 
-// IssuerStatus defines the observed state of Issuer
+// IssuerStatus defines the observed state of Issuer.
 type IssuerStatus struct {
-	// List of status conditions to indicate the status of a CertificateRequest.
-	// Known condition types are `Ready`.
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+
+	// For Kubernetes API conventions, see:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+
+	// conditions represent the current state of the Issuer resource.
+	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
+	//
+	// Standard condition types include:
+	// - "Available": the resource is fully functional
+	// - "Progressing": the resource is being created or updated
+	// - "Degraded": the resource failed to reach or maintain its desired state
+	//
+	// The status of each condition is one of True, False, or Unknown.
+	// +listType=map
+	// +listMapKey=type
 	// +optional
-	Conditions []IssuerCondition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// Issuer is the Schema for the issuers API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
@@ -107,75 +121,41 @@ type IssuerStatus struct {
 // +kubebuilder:printcolumn:name="Horizon URL",type=string,JSONPath=`.spec.url`
 // +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.authSecretName`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
-type Issuer struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   IssuerSpec   `json:"spec,omitempty"`
-	Status IssuerStatus `json:"status,omitempty"`
+// Issuer is the Schema for the issuers API
+type Issuer struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is a standard object metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitzero"`
+
+	// spec defines the desired state of Issuer
+	// +required
+	Spec IssuerSpec `json:"spec"`
+
+	// status defines the observed state of Issuer
+	// +optional
+	Status IssuerStatus `json:"status,omitzero"`
 }
 
-// IssuerList contains a list of Issuer
 // +kubebuilder:object:root=true
+
+// IssuerList contains a list of Issuer
 type IssuerList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []Issuer `json:"items"`
 }
 
-// IssuerCondition contains condition information for an Issuer.
-type IssuerCondition struct {
-	// Type of the condition, known values are ('Ready').
-	Type IssuerConditionType `json:"type"`
-
-	// Status of the condition, one of ('True', 'False', 'Unknown').
-	Status ConditionStatus `json:"status"`
-
-	// LastTransitionTime is the timestamp corresponding to the last status
-	// change of this condition.
-	// +optional
-	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
-
-	// Reason is a brief machine readable explanation for the condition's last
-	// transition.
-	// +optional
-	Reason string `json:"reason,omitempty"`
-
-	// Message is a human readable description of the details of the last
-	// transition, complementing reason.
-	// +optional
-	Message string `json:"message,omitempty"`
-}
-
-// IssuerConditionType represents an Issuer condition value.
+// IssuerConditionType is the string key for a condition in .status.conditions.type.
 type IssuerConditionType string
 
 const (
-	// IssuerConditionReady represents the fact that a given Issuer condition
-	// is in ready state and able to issue certificates.
-	// If the `status` of this condition is `False`, CertificateRequest controllers
-	// should prevent attempts to sign certificates.
+	// IssuerConditionReady represents readiness to issue certificates.
 	IssuerConditionReady IssuerConditionType = "Ready"
-)
-
-// ConditionStatus represents a condition's status.
-// +kubebuilder:validation:Enum=True;False;Unknown
-type ConditionStatus string
-
-// These are valid condition statuses. "ConditionTrue" means a resource is in
-// the condition; "ConditionFalse" means a resource is not in the condition;
-// "ConditionUnknown" means kubernetes can't decide if a resource is in the
-// condition or not. In the future, we could add other intermediate
-// conditions, e.g. ConditionDegraded.
-const (
-	// ConditionTrue represents the fact that a given condition is true
-	ConditionTrue ConditionStatus = "True"
-
-	// ConditionFalse represents the fact that a given condition is false
-	ConditionFalse ConditionStatus = "False"
-
-	// ConditionUnknown represents the fact that a given condition is unknown
-	ConditionUnknown ConditionStatus = "Unknown"
+	// IssuerConditionError represents an error in reaching the issuer.
+	IssuerConditionError IssuerConditionType = "Error"
 )
 
 func init() {

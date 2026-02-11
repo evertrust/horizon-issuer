@@ -1,28 +1,66 @@
-name: Docker build
+name: Release Please
+
 on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - closed
+    paths:
+      - .release-please-manifest.json
   workflow_dispatch:
     inputs:
-      tag:
-        description: Docker image tag
-        type: string
-        required: true
+      prerelease:
+        description: "Create a prerelease"
+        required: false
+        default: false
+        type: boolean
+
 jobs:
-  docker:
+  release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Login to DockerHub
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: ${{ github.event.inputs.prerelease == 'true' && '.github/release-please-prerelease-config.json' || '.github/release-please-config.json' }}
+          manifest-file: .release-please-manifest.json
+          target-branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 0
+
+      - name: Login to registry
         uses: docker/login-action@v2
         with:
           registry: registry.evertrust.io
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
-      - name: Build and push
-        uses: docker/build-push-action@v3
-        with:
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: registry.evertrust.io/horizon-issuer:${{ inputs.tag }}
+
+      - name: Setup Mise
+        uses: jdx/mise-action@v2
+
+      - name: Release assets
+        env:
+          NEXUS_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: mise publish

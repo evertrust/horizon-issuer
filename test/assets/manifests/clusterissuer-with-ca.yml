@@ -1,0 +1,28 @@
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
+metadata:
+  name: clusterissuer-with-ca
+spec:
+  url: https://horizon.horizon.svc.cluster.local:9443
+  profile: issuer
+  authSecretName: horizon-credentials
+  caBundle: |
+    -----BEGIN CERTIFICATE-----
+    MIIDGDCCAgCgAwIBAgIUJRH3Mh14JF91o1URvAJAU0t1a9MwDQYJKoZIhvcNAQEL
+    BQAwGTEXMBUGA1UEAwwOSXNzdWVyIFJvb3QgQ0EwIBcNMjUxMjA4MTQwMzM1WhgP
+    MjEyNTExMTQxNDAzMzVaMBkxFzAVBgNVBAMMDklzc3VlciBSb290IENBMIIBIjAN
+    BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzrPnY1QmcK6v51u7Urgw2bVRn2DN
+    CymUpt6wLqt0mIwyNjVRmX/LSRrthnA2LeebB5U21AZsVFtLI/yckfPnliD5mpvq
+    VtrJb9hez2DoekNsASszTc+6nzvscvI0wB/d5okZVAPujJ92RkQEhm6aFmbkSSYj
+    c/9RTQJX2thyrbfVY4t8r+qGK9nIgwmWNWDu9RuklxFwd7Q9xcasW7JcOyoyoTwj
+    V5XSZ7Urx5B/5hb1L+NpOQ99bv+ZRhaSlcfMRgk7JNjv37SjjETSnX5DpCO2ygXm
+    xrDvuMSeovNi4lbWZasZ/SrtgmX1rqq6tO1jFQpkAox2Oi+HjfsD25m1iwIDAQAB
+    o1YwVDAdBgNVHQ4EFgQUhRdYYUTJDgef3J2fTHWBBuP72vIwHwYDVR0jBBgwFoAU
+    hRdYYUTJDgef3J2fTHWBBuP72vIwEgYDVR0TAQH/BAgwBgEB/wIBATANBgkqhkiG
+    9w0BAQsFAAOCAQEAOD44adbNmTCKPdguYDKvTp/O0rZN9ZK2DT5RuIFkPT0EeDPw
+    yIcQTX3OOi1t4tLdxMvpHGf4KMnK+I89vJug9dCKpglciM+AWRFHIrlVaDTa2Mny
+    4tPw+IuJMvbQ+NnpR/ou/HqFJWuebw9buSExb6yt4Vg4xHYxKmNP1L3PIQJ7q9Ks
+    WBegjaOyJ49Q4Fnu9wTMcs0EvH+/h1udgLMt0YTHs3hYn8ZRIxlhDzhfvEZKu1nj
+    i2PSs26bQ0kcS+7alHzPICpjGqXzKhI47NZol0gHRiLw92AVkGvfd49UvKjYT+SZ
+    37ljf6IheM3VkqPHzvT+2MilYW2r6EJP6pJA+Q==
+    -----END CERTIFICATE-----

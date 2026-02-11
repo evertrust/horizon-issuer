@@ -1,0 +1,11 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-with-defaulttemplate
+spec:
+  commonName: certificate-with-defaulttemplate.org
+  secretName: certificate-with-defaulttemplate
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: clusterissuer-with-defaulttemplate
