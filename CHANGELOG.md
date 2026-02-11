@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.0](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.4...v1.0.0) (2026-02-11)
+
+
+### Features
+
+* generate chart using helm/v2-alpha ([5b1d400](https://github.com/evertrust/horizon-issuer/commit/5b1d400f3847a23f0e480f6dbcf988be520b0234))
+* migrate to kubebuilder v4 ([5b1d400](https://github.com/evertrust/horizon-issuer/commit/5b1d400f3847a23f0e480f6dbcf988be520b0234))
+* use the horizon go sdk ([5b1d400](https://github.com/evertrust/horizon-issuer/commit/5b1d400f3847a23f0e480f6dbcf988be520b0234))
+* v1 graduation ([#22](https://github.com/evertrust/horizon-issuer/issues/22)) ([5b1d400](https://github.com/evertrust/horizon-issuer/commit/5b1d400f3847a23f0e480f6dbcf988be520b0234))
+
+
+### Bug Fixes
+
+* **issuer:** fix annotations on ingress and certificates ([#17](https://github.com/evertrust/horizon-issuer/issues/17)) ([f14cbc3](https://github.com/evertrust/horizon-issuer/commit/f14cbc3a06932eab5fa0935c53f640f9767b230a))
+* **rbac:** give get,list and watch verbs on ingresses ([47aa1c5](https://github.com/evertrust/horizon-issuer/commit/47aa1c51ce1cef3436aa266897e429b176ac158d))
+* **rbac:** give get,list and watch verbs on ingresses ([1c6c1a7](https://github.com/evertrust/horizon-issuer/commit/1c6c1a7658948e7037c402a118b238174a9320f9))
+* set failure time upon failure ([#16](https://github.com/evertrust/horizon-issuer/issues/16)) ([303d245](https://github.com/evertrust/horizon-issuer/commit/303d245624ed6e9424020a969a61c889ae1a5b4e))
+
 ## [1.0.0-alpha.4](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.3...v1.0.0-alpha.4) (2026-02-11)
 
 
