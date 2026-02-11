@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-alpha.3](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2026-02-11)
+
+
+### Features
+
+* setup ko ([#33](https://github.com/evertrust/horizon-issuer/issues/33)) ([d71b11c](https://github.com/evertrust/horizon-issuer/commit/d71b11ce2e682ec4254da10d03e2054cca4246af))
+
 ## [1.0.0-alpha.2](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.1...v1.0.0-alpha.2) (2026-02-10)
 
 
