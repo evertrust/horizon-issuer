@@ -60,4 +60,7 @@ jobs:
         uses: jdx/mise-action@v2
 
       - name: Release assets
+        env:
+          NEXUS_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: mise publish
