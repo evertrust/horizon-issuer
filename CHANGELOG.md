@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0-alpha.4](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.3...v1.0.0-alpha.4) (2026-02-11)
+
+
+### Bug Fixes
+
+* add creds to the publish workflow ([a104d9d](https://github.com/evertrust/horizon-issuer/commit/a104d9d6115bd016fe07dbb9c4efc1cf24c42016))
+
 ## [1.0.0-alpha.3](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2026-02-11)
 
 
