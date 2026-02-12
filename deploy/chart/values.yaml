@@ -1,3 +1,6 @@
+# This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+imagePullSecrets: []
+
 # Configure the controller manager deployment
 manager:
   replicas: 1
