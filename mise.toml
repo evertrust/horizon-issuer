@@ -50,7 +50,8 @@ run = "controller-gen rbac:roleName=manager-role crd webhook paths=\"./...\" out
 description = "Generate the chart using the Kubebuilder Helm plugin"
 run = [
     "kustomize build config/default > dist/install.yaml",
-    "kubebuilder edit --plugins=helm/v2-alpha --output-dir deploy/"
+    "kubebuilder edit --plugins=helm/v2-alpha --output-dir deploy/",
+    "git apply hack/*.patch"
 ]
 
 [tasks.generate]

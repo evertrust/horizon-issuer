@@ -4,7 +4,7 @@
     ".": {
       "release-type": "go",
       "include-component-in-tag": false,
-      "include-v-in-tag": true,
+      "include-v-in-tag": false,
       "package-name": "horizon-issuer",
       "changelog-path": "CHANGELOG.md",
       "prerelease": false,
