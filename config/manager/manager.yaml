@@ -57,6 +57,7 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      imagePullSecrets: []
       containers:
       - args:
           - --leader-elect

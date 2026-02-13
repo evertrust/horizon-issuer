@@ -4,8 +4,10 @@ kind: ClusterRole
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: horizon-issuer
-    name: horizon-issuer-clusterissuer-admin-role
+        app.kubernetes.io/name: {{ include "horizon-issuer.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    name: {{ include "horizon-issuer.resourceName" (dict "suffix" "clusterissuer-admin-role" "context" $) }}
 rules:
     - apiGroups:
         - horizon.evertrust.io

@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - master
-  pull_request:
-    types:
-      - closed
-    paths:
-      - .release-please-manifest.json
   workflow_dispatch:
     inputs:
       prerelease:
