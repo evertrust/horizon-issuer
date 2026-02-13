@@ -57,12 +57,12 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      imagePullSecrets: []
       containers:
       - args:
           - --leader-elect
           - --health-probe-bind-address=:8081
         image: horizon-issuer:dev
-        imagePullSecrets: []
         name: manager
         ports: []
         securityContext:
