@@ -62,6 +62,7 @@ spec:
           - --leader-elect
           - --health-probe-bind-address=:8081
         image: horizon-issuer:dev
+        imagePullSecrets: []
         name: manager
         ports: []
         securityContext:

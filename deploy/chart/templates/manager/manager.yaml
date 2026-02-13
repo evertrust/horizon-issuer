@@ -3,24 +3,38 @@ kind: Deployment
 metadata:
     labels:
         app.kubernetes.io/managed-by: {{ .Release.Service }}
-        app.kubernetes.io/name: horizon-issuer
+        app.kubernetes.io/name: {{ include "horizon-issuer.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
         control-plane: controller-manager
-    name: horizon-issuer-controller-manager
+    name: {{ include "horizon-issuer.resourceName" (dict "suffix" "controller-manager" "context" $) }}
     namespace: {{ .Release.Namespace }}
 spec:
     replicas: 1
     selector:
         matchLabels:
-            app.kubernetes.io/name: horizon-issuer
+            app.kubernetes.io/name: {{ include "horizon-issuer.name" . }}
             control-plane: controller-manager
     template:
         metadata:
             annotations:
                 kubectl.kubernetes.io/default-container: manager
             labels:
-                app.kubernetes.io/name: horizon-issuer
+                app.kubernetes.io/name: {{ include "horizon-issuer.name" . }}
+                helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+                app.kubernetes.io/instance: {{ .Release.Name }}
+                app.kubernetes.io/managed-by: {{ .Release.Service }}
                 control-plane: controller-manager
         spec:
+            {{- with .Values.manager.tolerations }}
+            tolerations: {{ toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with .Values.manager.affinity }}
+            affinity: {{ toYaml . | nindent 16 }}
+            {{- end }}
+            {{- with .Values.manager.nodeSelector }}
+            nodeSelector: {{ toYaml . | nindent 16 }}
+            {{- end }}
             containers:
                 - args:
                     {{- if .Values.metrics.enable }}
@@ -33,8 +47,12 @@ spec:
                     {{- range .Values.manager.args }}
                     - {{ . }}
                     {{- end }}
-                  image: "{{ .Values.manager.image.repository }}:{{ default .Chart.AppVersion .Values.manager.image.tag }}"
+                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
+                  {{- if .Values.manager.imagePullSecrets }}
+                  imagePullSecrets:
+                    {{- toYaml .Values.manager.imagePullSecrets | nindent 20 }}
+                  {{- end }}
                   livenessProbe:
                     httpGet:
                         path: /healthz
@@ -68,6 +86,6 @@ spec:
               {{- else }}
               {}
               {{- end }}
-            serviceAccountName: horizon-issuer-controller-manager
+            serviceAccountName: {{ include "horizon-issuer.resourceName" (dict "suffix" "controller-manager" "context" $) }}
             terminationGracePeriodSeconds: 10
             volumes: []
