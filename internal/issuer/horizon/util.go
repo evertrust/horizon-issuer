@@ -16,6 +16,10 @@ import (
 func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*horizon.APIClient, error) {
 	config := horizon.NewConfiguration()
 
+	if issuerSpec.URL[len(issuerSpec.URL)-1] == '/' {
+		issuerSpec.URL = issuerSpec.URL[:len(issuerSpec.URL)-1]
+	}
+
 	config.Servers = horizon.ServerConfigurations{{
 		URL: issuerSpec.URL,
 	}}
