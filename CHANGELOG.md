@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/evertrust/horizon-issuer/compare/v1.0.0...1.0.1) (2026-02-18)
+
+
+### Bug Fixes
+
+* **helm:** add imagePullSecrets to templatable values ([#42](https://github.com/evertrust/horizon-issuer/issues/42)) ([1bdcff0](https://github.com/evertrust/horizon-issuer/commit/1bdcff0f1974d913c521f8dc8d145b428900909e))
+* trim trailing slashes in horizon instances URLs ([#45](https://github.com/evertrust/horizon-issuer/issues/45)) ([c3fe83e](https://github.com/evertrust/horizon-issuer/commit/c3fe83eb2d737258085f8b3244cb9b87a67c53a4))
+
 ## [1.0.0](https://github.com/evertrust/horizon-issuer/compare/v1.0.0-alpha.4...v1.0.0) (2026-02-11)
 
 
