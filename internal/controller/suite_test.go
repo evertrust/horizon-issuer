@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -60,6 +61,8 @@ var _ = BeforeSuite(func() {
 
 	var err error
 	err = horizonevertrustiov1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = cmapi.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
@@ -108,8 +111,26 @@ func getFirstFoundEnvTestBinaryDir() string {
 		return ""
 	}
 	for _, entry := range entries {
-		if entry.IsDir() {
-			return filepath.Join(basePath, entry.Name())
+		if !entry.IsDir() {
+			continue
+		}
+		levelOne := filepath.Join(basePath, entry.Name())
+		if _, err := os.Stat(filepath.Join(levelOne, "etcd")); err == nil {
+			return levelOne
+		}
+
+		levelOneEntries, err := os.ReadDir(levelOne)
+		if err != nil {
+			continue
+		}
+		for _, nested := range levelOneEntries {
+			if !nested.IsDir() {
+				continue
+			}
+			levelTwo := filepath.Join(levelOne, nested.Name())
+			if _, err := os.Stat(filepath.Join(levelTwo, "etcd")); err == nil {
+				return levelTwo
+			}
 		}
 	}
 	return ""

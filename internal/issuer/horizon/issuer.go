@@ -89,6 +89,10 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+
 	// Update the request with the Horizon request ID
 	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
 
@@ -121,6 +125,10 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 		Execute()
 	if err != nil {
 		return r.handleFailedRequest(certificateRequest, err)
+	}
+
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
 	}
 
 	// Update the request with the Horizon request ID
@@ -198,9 +206,9 @@ func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.Certificat
 func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
-		cmapi.CertificateRequestConditionDenied,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
+		cmapi.CertificateRequestConditionReady,
+		cmmeta.ConditionFalse,
+		cmapi.CertificateRequestReasonDenied,
 		"Request denied on Horizon",
 	)
 
@@ -208,14 +216,6 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 }
 
 func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnApproveResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	cmutil.SetCertificateRequestCondition(
-		certificateRequest,
-		cmapi.CertificateRequestConditionApproved,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
-		"Request approved on Horizon",
-	)
-
 	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
@@ -227,6 +227,9 @@ func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollReques
 			certificateRequest.Status.CA = []byte(ca)
 		}
 		if certificate != "" {
+			if certificateRequest.Annotations == nil {
+				certificateRequest.Annotations = make(map[string]string)
+			}
 			certificateRequest.Annotations[CertificateIdAnnotation] = request.Certificate.Get().GetId()
 			certificateRequest.Annotations[OwnerAnnotation] = request.Certificate.Get().GetOwner()
 			certificateRequest.Annotations[TeamAnnotation] = request.Certificate.Get().GetTeam()
