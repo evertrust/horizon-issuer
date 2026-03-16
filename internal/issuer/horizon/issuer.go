@@ -19,6 +19,7 @@ import (
 const IssuerNamespace = "horizon.evertrust.io"
 const (
 	RequestIdAnnotation         = IssuerNamespace + "/request-id"
+	RequestStatusAnnotation     = IssuerNamespace + "/request-status"
 	CertificateIdAnnotation     = IssuerNamespace + "/certificate-id"
 	LastCertificateIdAnnotation = IssuerNamespace + "/last-certificate-id"
 	OwnerAnnotation             = IssuerNamespace + "/owner"
@@ -89,8 +90,13 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+
 	// Update the request with the Horizon request ID
 	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
+	certificateRequest.Annotations[RequestStatusAnnotation] = string(models.REQUESTSTATUS_PENDING)
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -123,8 +129,13 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+
 	// Update the request with the Horizon request ID
 	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
+	certificateRequest.Annotations[RequestStatusAnnotation] = string(models.REQUESTSTATUS_PENDING)
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -152,8 +163,10 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 	case models.REQUESTSTATUS_COMPLETED:
 		return r.handleCompletedRequest(request.WebRAEnrollRequestOnApproveResponse, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
+		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnApproveResponse.Status))
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
+		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnApproveResponse.Status))
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
@@ -196,11 +209,13 @@ func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.Certificat
 }
 
 func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+	setRequestStatusAnnotation(certificateRequest, string(models.REQUESTSTATUS_DENIED))
+
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
-		cmapi.CertificateRequestConditionDenied,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
+		cmapi.CertificateRequestConditionReady,
+		cmmeta.ConditionFalse,
+		cmapi.CertificateRequestReasonDenied,
 		"Request denied on Horizon",
 	)
 
@@ -208,14 +223,6 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 }
 
 func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnApproveResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	cmutil.SetCertificateRequestCondition(
-		certificateRequest,
-		cmapi.CertificateRequestConditionApproved,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
-		"Request approved on Horizon",
-	)
-
 	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
@@ -227,6 +234,10 @@ func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollReques
 			certificateRequest.Status.CA = []byte(ca)
 		}
 		if certificate != "" {
+			if certificateRequest.Annotations == nil {
+				certificateRequest.Annotations = make(map[string]string)
+			}
+			certificateRequest.Annotations[RequestStatusAnnotation] = string(models.REQUESTSTATUS_COMPLETED)
 			certificateRequest.Annotations[CertificateIdAnnotation] = request.Certificate.Get().GetId()
 			certificateRequest.Annotations[OwnerAnnotation] = request.Certificate.Get().GetOwner()
 			certificateRequest.Annotations[TeamAnnotation] = request.Certificate.Get().GetTeam()
@@ -249,4 +260,11 @@ func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollReques
 
 	// We don't requeue this request since it is completed
 	return ctrl.Result{}, nil
+}
+
+func setRequestStatusAnnotation(certificateRequest *cmapi.CertificateRequest, status string) {
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+	certificateRequest.Annotations[RequestStatusAnnotation] = status
 }
