@@ -59,14 +59,14 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 	req.SetWorkflow(template.WebRAEnrollRequestOnTemplateResponse.GetWorkflow())
 	req.SetModule(template.WebRAEnrollRequestOnTemplateResponse.GetModule())
 	req.SetProfile(template.WebRAEnrollRequestOnTemplateResponse.GetProfile())
-	req.Template.SetSubject(indexElementsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject()))
-	req.Template.SetSans(sansFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans()))
-	req.Template.SetExtensions(extensionsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions()))
-	req.Template.SetLabels(labelsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels()))
-	req.Template.SetContactEmail(contactEmailFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail()))
-	req.Template.SetOwner(ownerFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner()))
-	req.Template.SetTeam(teamFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam()))
-	req.Template.SetMetadata(metadataFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata()))
+	req.Template.SetSubject(models.TemplateIndexElementsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject()))
+	req.Template.SetSans(models.TemplateSansFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans()))
+	req.Template.SetExtensions(models.TemplateExtensionsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions()))
+	req.Template.SetLabels(models.TemplateLabelsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels()))
+	req.Template.SetContactEmail(models.TemplateContactEmailFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail()))
+	req.Template.SetOwner(models.TemplateOwnerFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner()))
+	req.Template.SetTeam(models.TemplateTeamFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam()))
+	req.Template.SetMetadata(models.TemplateMetadataFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata()))
 	req.Template.SetCsr(string(certificateRequest.Spec.Request))
 	// Override those who are set from cert-manager
 	if owner != nil {
@@ -249,87 +249,4 @@ func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollReques
 
 	// We don't requeue this request since it is completed
 	return ctrl.Result{}, nil
-}
-
-func indexElementsFromResponse(input []models.IndexedDNElementResponse) []models.IndexedDNElement {
-	output := make([]models.IndexedDNElement, len(input))
-
-	for i := range input {
-		output[i] = models.IndexedDNElement{
-			Element: input[i].Element,
-			Value:   input[i].Value,
-		}
-	}
-
-	return output
-}
-
-func sansFromResponse(input []models.ListSANElementResponse) []models.ListSANElement {
-	output := make([]models.ListSANElement, len(input))
-
-	for i := range input {
-		output[i] = models.ListSANElement{
-			Type:  input[i].Type,
-			Value: input[i].Value,
-		}
-	}
-
-	return output
-}
-
-func extensionsFromResponse(input []models.CertificateExtensionElementResponse) []models.CertificateExtensionElement {
-	output := make([]models.CertificateExtensionElement, len(input))
-
-	for i := range input {
-		output[i] = models.CertificateExtensionElement{
-			Type:  input[i].Type,
-			Value: input[i].Value,
-		}
-	}
-
-	return output
-}
-
-func labelsFromResponse(input []models.RequestLabelElementResponse) []models.RequestLabelElement {
-	output := make([]models.RequestLabelElement, len(input))
-
-	for i := range input {
-		output[i] = models.RequestLabelElement{
-			Label: input[i].Label,
-			Value: input[i].Value,
-		}
-	}
-
-	return output
-}
-
-func contactEmailFromResponse(input models.CertificateContactEmailElementResponse) models.CertificateContactEmailElement {
-	return models.CertificateContactEmailElement{
-		Value: input.Value,
-	}
-}
-
-func ownerFromResponse(input models.CertificateOwnerElementResponse) models.CertificateOwnerElement {
-	return models.CertificateOwnerElement{
-		Value: input.Value,
-	}
-}
-
-func teamFromResponse(input models.CertificateTeamElementResponse) models.CertificateTeamElement {
-	return models.CertificateTeamElement{
-		Value: input.Value,
-	}
-}
-
-func metadataFromResponse(input []models.CertificateMetadataElementResponse) []models.CertificateMetadataElement {
-	output := make([]models.CertificateMetadataElement, len(input))
-
-	for i := range input {
-		output[i] = models.CertificateMetadataElement{
-			Metadata: input[i].Metadata,
-			Value:    input[i].Value,
-		}
-	}
-
-	return output
 }
