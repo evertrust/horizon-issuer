@@ -1,0 +1,61 @@
+name: Trivy scan
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  trivy:
+    runs-on: runs-on=${{ github.run_id }}/runner=evertrust
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Configure Runs-On
+        uses: runs-on/action@v2
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+
+      - name: Fetch secrets via Vault
+        uses: hashicorp/vault-action@v2
+        with:
+          url: ${{ vars.VAULT_ADDR }}
+          method: ${{ vars.VAULT_AUTH_METHOD }}
+          path: ${{ vars.VAULT_AUTH_PATH }}
+          secrets: |
+            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_API_KEY   |   LINEAR_API_KEY  ;
+            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_LABEL_IDS    |   LINEAR_LABEL_IDS   ;
+            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_TEAM_ID   |   LINEAR_TEAM_ID  ;
+            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_TODO_STATUS   |   LINEAR_TODO_STATUS  ;
+
+      - name: Run Trivy scan
+        run: trivy fs --severity CRITICAL,HIGH --format json --output trivy-horizon-issuer.json --vex repo .
+
+      - name: Produce Sbom
+        run: trivy fs --format spdx --output trivy-horizon-issuer.spdx --vex repo .
+
+      - name: Upload Trivy artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-horizon-issuer
+          path: |
+            trivy-horizon-issuer.json
+            trivy-horizon-issuer.spdx
+
+      - name: Upload Vulnerabilities to Linear
+        if: always()
+        uses: evertrust/trivy-to-linear/.github/actions/trivy-to-linear@dcf968652d5508d7439b78717f514bdb8bb907bf
+        with:
+          linear-api-key: ${{ env.LINEAR_API_KEY }}
+          linear-team-id: ${{ env.LINEAR_TEAM_ID }}
+          linear-todo-status: ${{ env.LINEAR_TODO_STATUS }}
+          linear-label-ids: ${{ env.LINEAR_LABEL_IDS }}
+          git-branch: ${{ github.ref_name }}
+          trivy-report-path: trivy-horizon-issuer.json
