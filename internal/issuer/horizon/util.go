@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/evertrust/horizon-go/v2"
 	"github.com/evertrust/horizon-go/v2/models"
@@ -15,6 +16,7 @@ import (
 
 func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*horizon.APIClient, error) {
 	config := horizon.NewConfiguration()
+	issuerSpec.URL = strings.TrimSuffix(issuerSpec.URL, "/")
 
 	config.Servers = horizon.ServerConfigurations{{
 		URL: issuerSpec.URL,

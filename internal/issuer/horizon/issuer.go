@@ -59,14 +59,14 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 	req.SetWorkflow(template.WebRAEnrollRequestOnTemplateResponse.GetWorkflow())
 	req.SetModule(template.WebRAEnrollRequestOnTemplateResponse.GetModule())
 	req.SetProfile(template.WebRAEnrollRequestOnTemplateResponse.GetProfile())
-	req.Template.SetSubject(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject())
-	req.Template.SetSans(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans())
-	req.Template.SetExtensions(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions())
-	req.Template.SetLabels(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels())
-	req.Template.SetContactEmail(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail())
-	req.Template.SetOwner(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner())
-	req.Template.SetTeam(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam())
-	req.Template.SetMetadata(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata())
+	req.Template.SetSubject(models.TemplateIndexElementsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject()))
+	req.Template.SetSans(models.TemplateSansFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans()))
+	req.Template.SetExtensions(models.TemplateExtensionsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions()))
+	req.Template.SetLabels(models.TemplateLabelsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels()))
+	req.Template.SetContactEmail(models.TemplateContactEmailFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail()))
+	req.Template.SetOwner(models.TemplateOwnerFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner()))
+	req.Template.SetTeam(models.TemplateTeamFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam()))
+	req.Template.SetMetadata(models.TemplateMetadataFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata()))
 	req.Template.SetCsr(string(certificateRequest.Spec.Request))
 	// Override those who are set from cert-manager
 	if owner != nil {
@@ -147,17 +147,17 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to fetch request from Horizon"), err)
 	}
 
-	logger.Info(fmt.Sprintf("Handling %s request %s", request.WebRAEnrollRequestOnApproveResponse.Status, certificateRequest.UID))
-	switch request.WebRAEnrollRequestOnApproveResponse.Status {
+	logger.Info(fmt.Sprintf("Handling %s request %s", request.WebRAEnrollRequestOnGetResponse.Status, certificateRequest.UID))
+	switch request.WebRAEnrollRequestOnGetResponse.Status {
 	case models.REQUESTSTATUS_COMPLETED:
-		return r.handleCompletedRequest(request.WebRAEnrollRequestOnApproveResponse, certificateRequest)
+		return r.handleCompletedRequest(request.WebRAEnrollRequestOnGetResponse, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
-	return ctrl.Result{}, errors.New("invalid request status " + string(request.WebRAEnrollRequestOnApproveResponse.Status))
+	return ctrl.Result{}, errors.New("invalid request status " + string(request.WebRAEnrollRequestOnGetResponse.Status))
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
@@ -207,7 +207,7 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnApproveResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnGetResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionApproved,
