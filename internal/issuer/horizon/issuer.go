@@ -51,7 +51,7 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 		})).
 		Execute()
 	if err != nil {
-		return ctrl.Result{}, err
+		return r.handleFailedRequest(certificateRequest, err)
 	}
 
 	var req models.WebRAEnrollRequestOnSubmit
@@ -184,16 +184,25 @@ func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 }
 
 func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {
+	msg := formatAPIError(err)
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionInvalidRequest,
 		cmmeta.ConditionTrue,
 		cmapi.CertificateRequestReasonFailed,
-		err.Error(),
+		msg,
 	)
 
-	return ctrl.Result{}, err
+	return ctrl.Result{}, &apiError{inner: err, msg: msg}
 }
+
+type apiError struct {
+	inner error
+	msg   string
+}
+
+func (e *apiError) Error() string { return e.msg }
+func (e *apiError) Unwrap() error { return e.inner }
 
 func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(

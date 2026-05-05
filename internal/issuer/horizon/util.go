@@ -3,6 +3,7 @@ package horizon
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -74,6 +75,44 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 
 	client := horizon.NewAPIClient(config)
 	return client, nil
+}
+
+func formatAPIError(err error) string {
+	if err == nil {
+		return ""
+	}
+	var apiErr *horizon.GenericOpenAPIError
+	if errors.As(err, &apiErr) {
+		if be, ok := apiErr.Model().(models.BasicError); ok {
+			if msg := formatBasicError(&be); msg != "" {
+				return msg
+			}
+		}
+	}
+	return err.Error()
+}
+
+func formatBasicError(be *models.BasicError) string {
+	var parts []string
+	if code := be.GetError(); code != "" {
+		parts = append(parts, code)
+	}
+	summary := be.GetTitle()
+	if summary == "" {
+		summary = be.GetMessage()
+	}
+	if be.HasDetail() {
+		detail := be.GetDetail()
+		if summary != "" && detail != "" {
+			summary = fmt.Sprintf("%s: %s", summary, detail)
+		} else if detail != "" {
+			summary = detail
+		}
+	}
+	if summary != "" {
+		parts = append(parts, summary)
+	}
+	return strings.Join(parts, " - ")
 }
 
 // buildPemTrustchain constructs a PEM-encoded leaf-to-root trust chain, given a collection
