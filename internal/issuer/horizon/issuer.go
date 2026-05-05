@@ -184,16 +184,29 @@ func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 }
 
 func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {
+	msg := FormatAPIError(err)
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionInvalidRequest,
 		cmmeta.ConditionTrue,
 		cmapi.CertificateRequestReasonFailed,
-		err.Error(),
+		msg,
 	)
 
-	return ctrl.Result{}, err
+	return ctrl.Result{}, &apiError{inner: err, msg: msg}
 }
+
+// apiError wraps a horizon-go API error so that downstream callers (event
+// recorders, log lines) see the cleaned-up message produced by FormatAPIError
+// instead of the raw upstream string. errors.As / errors.Is still reach the
+// underlying error and its model.
+type apiError struct {
+	inner error
+	msg   string
+}
+
+func (e *apiError) Error() string { return e.msg }
+func (e *apiError) Unwrap() error { return e.inner }
 
 func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
