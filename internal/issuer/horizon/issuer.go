@@ -51,7 +51,7 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 		})).
 		Execute()
 	if err != nil {
-		return ctrl.Result{}, err
+		return r.handleFailedRequest(certificateRequest, err)
 	}
 
 	var req models.WebRAEnrollRequestOnSubmit
