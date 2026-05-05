@@ -16,3 +16,4 @@ Then, list available targets:
 ```sh
 mise task ls
 ```
+
