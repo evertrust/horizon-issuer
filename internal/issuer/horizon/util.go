@@ -77,7 +77,7 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 	return client, nil
 }
 
-func FormatAPIError(err error) string {
+func formatAPIError(err error) string {
 	if err == nil {
 		return ""
 	}

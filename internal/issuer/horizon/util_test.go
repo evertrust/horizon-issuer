@@ -98,10 +98,10 @@ func TestFormatBasicError(t *testing.T) {
 
 func TestFormatAPIErrorFallsBackToErrorString(t *testing.T) {
 	err := errors.New("plain network error")
-	if got := FormatAPIError(err); got != "plain network error" {
+	if got := formatAPIError(err); got != "plain network error" {
 		t.Errorf("FormatAPIError() = %q, want %q", got, "plain network error")
 	}
-	if got := FormatAPIError(nil); got != "" {
+	if got := formatAPIError(nil); got != "" {
 		t.Errorf("FormatAPIError(nil) = %q, want empty string", got)
 	}
 }

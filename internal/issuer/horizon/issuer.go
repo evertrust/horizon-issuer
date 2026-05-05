@@ -184,7 +184,7 @@ func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 }
 
 func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {
-	msg := FormatAPIError(err)
+	msg := formatAPIError(err)
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionInvalidRequest,
