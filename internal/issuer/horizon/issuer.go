@@ -196,10 +196,6 @@ func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, &apiError{inner: err, msg: msg}
 }
 
-// apiError wraps a horizon-go API error so that downstream callers (event
-// recorders, log lines) see the cleaned-up message produced by FormatAPIError
-// instead of the raw upstream string. errors.As / errors.Is still reach the
-// underlying error and its model.
 type apiError struct {
 	inner error
 	msg   string
