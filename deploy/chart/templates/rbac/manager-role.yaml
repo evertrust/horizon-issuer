@@ -1,81 +1,81 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-    name: {{ include "horizon-issuer.resourceName" (dict "suffix" "manager-role" "context" $) }}
+  name: {{ include "horizon-issuer.resourceName" (dict "suffix" "manager-role" "context" $) }}
 rules:
-    - apiGroups:
-        - ""
-      resources:
-        - events
-      verbs:
-        - create
-        - patch
-    - apiGroups:
-        - ""
-      resources:
-        - secrets
-      verbs:
-        - get
-        - list
-        - watch
-    - apiGroups:
-        - cert-manager.io
-      resources:
-        - certificaterequests
-        - certificates
-      verbs:
-        - get
-        - list
-        - update
-        - watch
-    - apiGroups:
-        - cert-manager.io
-      resources:
-        - certificaterequests/finalizers
-      verbs:
-        - update
-    - apiGroups:
-        - cert-manager.io
-      resources:
-        - certificaterequests/status
-      verbs:
-        - get
-        - patch
-        - update
-    - apiGroups:
-        - cert-manager.io
-      resources:
-        - signers
-      verbs:
-        - approve
-    - apiGroups:
-        - horizon.evertrust.io
-      resources:
-        - clusterissuers
-        - issuers
-      verbs:
-        - '*'
-    - apiGroups:
-        - horizon.evertrust.io
-      resources:
-        - clusterissuers/finalizers
-        - issuers/finalizers
-      verbs:
-        - update
-    - apiGroups:
-        - horizon.evertrust.io
-      resources:
-        - clusterissuers/status
-        - issuers/status
-      verbs:
-        - get
-        - patch
-        - update
-    - apiGroups:
-        - networking.k8s.io
-      resources:
-        - ingresses
-      verbs:
-        - get
-        - list
-        - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificaterequests
+  - certificates
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificaterequests/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificaterequests/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - signers
+  verbs:
+  - approve
+- apiGroups:
+  - horizon.evertrust.io
+  resources:
+  - clusterissuers
+  - issuers
+  verbs:
+  - '*'
+- apiGroups:
+  - horizon.evertrust.io
+  resources:
+  - clusterissuers/finalizers
+  - issuers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - horizon.evertrust.io
+  resources:
+  - clusterissuers/status
+  - issuers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
