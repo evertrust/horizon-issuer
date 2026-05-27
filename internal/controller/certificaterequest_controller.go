@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -219,13 +220,16 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			r.Recorder.Event(&certificateRequest, corev1.EventTypeWarning, "Error", err.Error())
 		}
 
-		var updateErr, parentUpdateErr error
+		metadataChanged := !reflect.DeepEqual(certificateRequestCopy.Annotations, certificateRequest.Annotations) ||
+			!reflect.DeepEqual(certificateRequestCopy.Finalizers, certificateRequest.Finalizers)
+		statusChanged := !reflect.DeepEqual(certificateRequestCopy.Status, certificateRequest.Status)
 
-		// if annotations changed we have to call .Update() and not .UpdateStatus()
-		if !reflect.DeepEqual(certificateRequestCopy.Annotations, certificateRequest.Annotations) {
-			updateErr = r.Update(ctx, &certificateRequest)
-		} else {
-			updateErr = r.Status().Update(ctx, &certificateRequest)
+		var updateErr, statusUpdateErr, parentUpdateErr error
+		if metadataChanged {
+			updateErr = r.updateCertificateRequestMetadataWithRetry(ctx, req.NamespacedName, &certificateRequest)
+		}
+		if statusChanged {
+			statusUpdateErr = r.updateCertificateRequestStatusWithRetry(ctx, req.NamespacedName, &certificateRequest)
 		}
 
 		// if CertificateIdAnnotation was set, we should update the parent Certificate object with the annotation
@@ -242,8 +246,8 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			parentUpdateErr = r.Update(ctx, certificate)
 		}
 
-		if updateErr != nil {
-			err = utilerrors.NewAggregate([]error{err, updateErr, parentUpdateErr})
+		if updateErr != nil || statusUpdateErr != nil || parentUpdateErr != nil {
+			err = utilerrors.NewAggregate([]error{err, updateErr, statusUpdateErr, parentUpdateErr})
 			result = ctrl.Result{}
 		}
 	}()
@@ -291,35 +295,35 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	// If CertificateRequest has not been approved, we should submit the request.
 	if !cmutil.CertificateRequestIsApproved(&certificateRequest) {
-		// If the request has been submitted to Horizon, pull info from Horizon
-		if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
-			return r.Issuer.UpdateRequest(ctx, &certificateRequest)
-		} else {
-			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("%w", err)
-			}
-			parentIssuingReason := cmutil.GetCertificateCondition(certificate, cmapi.CertificateConditionIssuing).Reason
-			// If the parent certificate already has a CertificateIdAnnotation, we should submit a renew request
-			shoudlRenew := metav1.HasAnnotation(certificate.ObjectMeta, horizonissuer.LastCertificateIdAnnotation) &&
-				(parentIssuingReason == "ManuallyTriggered" || parentIssuingReason == "Renewing" || parentIssuingReason == "Expired")
-
-			if shoudlRenew {
-				return r.Issuer.SubmitRenewRequest(ctx, *issuerSpec, &certificateRequest, certificate.Annotations[horizonissuer.LastCertificateIdAnnotation])
-			} else {
-				// Else, we consider this a new certificate and submit an enroll request
-				labels, owner, team, contactEmail, err := r.certificateMetadata(ctx, &certificateRequest)
-				if err != nil {
-					setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, err.Error())
-				}
-				return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, contactEmail, &certificateRequest)
-			}
-		}
+		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, "Waiting for approval")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	return ctrl.Result{}, nil
+	requestID := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]
+	if requestID != "" {
+		return r.Issuer.UpdateRequest(ctx, &certificateRequest)
+	}
+
+	certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w", err)
+	}
+	parentIssuingReason := cmutil.GetCertificateCondition(certificate, cmapi.CertificateConditionIssuing).Reason
+	// If the parent certificate already has a CertificateIdAnnotation, we should submit a renew request
+	shouldRenew := metav1.HasAnnotation(certificate.ObjectMeta, horizonissuer.LastCertificateIdAnnotation) &&
+		(parentIssuingReason == "ManuallyTriggered" || parentIssuingReason == "Renewing" || parentIssuingReason == "Expired")
+
+	if shouldRenew {
+		return r.Issuer.SubmitRenewRequest(ctx, *issuerSpec, &certificateRequest, certificate.Annotations[horizonissuer.LastCertificateIdAnnotation])
+	}
+
+	// Else, we consider this a new certificate and submit an enroll request
+	labels, owner, team, contactEmail, err := r.certificateMetadata(ctx, &certificateRequest)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("%w", err)
+	}
+	return r.Issuer.SubmitEnrollRequest(ctx, *issuerSpec, labels, owner, team, contactEmail, &certificateRequest)
 }
 
 func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
@@ -339,10 +343,96 @@ func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certi
 		// remove our finalizer from the list and update it.
 		controllerutil.RemoveFinalizer(certificateRequest, FinalizerName)
 		if err := r.Update(ctx, certificateRequest); err != nil {
-			return nil
+			return err
 		}
 	}
 
+	return nil
+}
+
+func (r *CertificateRequestReconciler) updateCertificateRequestMetadataWithRetry(ctx context.Context, name types.NamespacedName, desired *cmapi.CertificateRequest) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var latest cmapi.CertificateRequest
+		if err := r.Get(ctx, name, &latest); err != nil {
+			return err
+		}
+
+		latest.Annotations = mergeStringMap(latest.Annotations, desired.Annotations)
+		applyManagedFinalizer(&latest, desired)
+
+		return r.Update(ctx, &latest)
+	})
+}
+
+func (r *CertificateRequestReconciler) updateCertificateRequestStatusWithRetry(ctx context.Context, name types.NamespacedName, desired *cmapi.CertificateRequest) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var latest cmapi.CertificateRequest
+		if err := r.Get(ctx, name, &latest); err != nil {
+			return err
+		}
+
+		copyManagedStatusFields(&latest, desired)
+		return r.Status().Update(ctx, &latest)
+	})
+}
+
+func mergeStringMap(dst, src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[string]string, len(src))
+	}
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func applyManagedFinalizer(latest, desired *cmapi.CertificateRequest) {
+	hasFinalizer := controllerutil.ContainsFinalizer(desired, FinalizerName)
+	if hasFinalizer && !controllerutil.ContainsFinalizer(latest, FinalizerName) {
+		controllerutil.AddFinalizer(latest, FinalizerName)
+	}
+	if !hasFinalizer && controllerutil.ContainsFinalizer(latest, FinalizerName) {
+		controllerutil.RemoveFinalizer(latest, FinalizerName)
+	}
+}
+
+func copyManagedStatusFields(latest, desired *cmapi.CertificateRequest) {
+	for _, conditionType := range []cmapi.CertificateRequestConditionType{
+		cmapi.CertificateRequestConditionReady,
+		cmapi.CertificateRequestConditionInvalidRequest,
+	} {
+		if desiredCondition := findConditionByType(desired.Status.Conditions, conditionType); desiredCondition != nil {
+			cmutil.SetCertificateRequestCondition(
+				latest,
+				desiredCondition.Type,
+				desiredCondition.Status,
+				desiredCondition.Reason,
+				desiredCondition.Message,
+			)
+		}
+	}
+
+	if desired.Status.FailureTime != nil {
+		t := *desired.Status.FailureTime
+		latest.Status.FailureTime = &t
+	}
+	if len(desired.Status.Certificate) > 0 {
+		latest.Status.Certificate = append([]byte(nil), desired.Status.Certificate...)
+	}
+	if len(desired.Status.CA) > 0 {
+		latest.Status.CA = append([]byte(nil), desired.Status.CA...)
+	}
+}
+
+func findConditionByType(conditions []cmapi.CertificateRequestCondition, conditionType cmapi.CertificateRequestConditionType) *cmapi.CertificateRequestCondition {
+	for i := range conditions {
+		if conditions[i].Type == conditionType {
+			return &conditions[i]
+		}
+	}
 	return nil
 }
 
