@@ -50,15 +50,16 @@ manager:
       - ALL
     readOnlyRootFilesystem: true
 
-  ## Resource limits and requests
-  ##
+  ## Resource limits and requests.
+  ## Memory scales with the number of CertificateRequests the controller caches
+  ## cluster-wide; raise the limit on large clusters.
   resources:
     limits:
       cpu: 500m
-      memory: 128Mi
+      memory: 512Mi
     requests:
       cpu: 10m
-      memory: 64Mi
+      memory: 128Mi
 
   ## Manager pod's affinity
   ##
