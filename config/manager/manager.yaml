@@ -83,15 +83,16 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
+        # Memory scales with the number of CertificateRequests the controller
+        # caches cluster-wide; raise the limit on large clusters.
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:
             cpu: 500m
-            memory: 128Mi
+            memory: 512Mi
           requests:
             cpu: 10m
-            memory: 64Mi
+            memory: 128Mi
         volumeMounts: []
       volumes: []
       serviceAccountName: controller-manager
