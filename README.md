@@ -6,7 +6,7 @@ The documentation for horizon-issuer has been migrated to [docs.evertrust.fr](ht
 
 ## Developing
 
-horizon-issuer uses [mise](https://github.com/jdxcode/mise) to manage its dependencies. To install it, run:
+horizon-issuer uses [mise](https://github.com/jdx/mise) to manage its dependencies. To install it, run:
 
 ```sh
 curl -fsSL https://mise.jdxcode.dev | sh
