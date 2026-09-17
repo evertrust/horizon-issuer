@@ -300,7 +300,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	requestID := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]
 	if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
 		return r.Issuer.UpdateRequest(ctx, &certificateRequest)
 	}
