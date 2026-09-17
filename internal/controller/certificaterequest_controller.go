@@ -301,7 +301,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	requestID := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]
-	if requestID != "" {
+	if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
 		return r.Issuer.UpdateRequest(ctx, &certificateRequest)
 	}
 
