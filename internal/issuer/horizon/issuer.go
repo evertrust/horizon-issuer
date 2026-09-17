@@ -52,7 +52,7 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 		})).
 		Execute()
 	if err != nil {
-		return ctrl.Result{}, err
+		return r.handleFailedRequest(certificateRequest, err)
 	}
 
 	var req models.WebRAEnrollRequestOnSubmit
@@ -60,14 +60,14 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 	req.SetWorkflow(template.WebRAEnrollRequestOnTemplateResponse.GetWorkflow())
 	req.SetModule(template.WebRAEnrollRequestOnTemplateResponse.GetModule())
 	req.SetProfile(template.WebRAEnrollRequestOnTemplateResponse.GetProfile())
-	req.Template.SetSubject(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject())
-	req.Template.SetSans(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans())
-	req.Template.SetExtensions(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions())
-	req.Template.SetLabels(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels())
-	req.Template.SetContactEmail(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail())
-	req.Template.SetOwner(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner())
-	req.Template.SetTeam(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam())
-	req.Template.SetMetadata(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata())
+	req.Template.SetSubject(models.TemplateIndexElementsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSubject()))
+	req.Template.SetSans(models.TemplateSansFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetSans()))
+	req.Template.SetExtensions(models.TemplateExtensionsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetExtensions()))
+	req.Template.SetLabels(models.TemplateLabelsFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetLabels()))
+	req.Template.SetContactEmail(models.TemplateContactEmailFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetContactEmail()))
+	req.Template.SetOwner(models.TemplateOwnerFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetOwner()))
+	req.Template.SetTeam(models.TemplateTeamFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetTeam()))
+	req.Template.SetMetadata(models.TemplateMetadataFromResponse(template.WebRAEnrollRequestOnTemplateResponse.Template.GetMetadata()))
 	req.Template.SetCsr(string(certificateRequest.Spec.Request))
 	// Override those who are set from cert-manager
 	if owner != nil {
@@ -158,10 +158,10 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to fetch request from Horizon"), err)
 	}
 
-	logger.Info(fmt.Sprintf("Handling %s request %s", request.WebRAEnrollRequestOnApproveResponse.Status, certificateRequest.UID))
-	switch request.WebRAEnrollRequestOnApproveResponse.Status {
+	logger.Info(fmt.Sprintf("Handling %s request %s", request.WebRAEnrollRequestOnGetResponse.Status, certificateRequest.UID))
+	switch request.WebRAEnrollRequestOnGetResponse.Status {
 	case models.REQUESTSTATUS_COMPLETED:
-		return r.handleCompletedRequest(request.WebRAEnrollRequestOnApproveResponse, certificateRequest)
+		return r.handleCompletedRequest(request.WebRAEnrollRequestOnGetResponse, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
 		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnApproveResponse.Status))
 		return r.handlePendingRequest()
@@ -170,7 +170,7 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
-	return ctrl.Result{}, errors.New("invalid request status " + string(request.WebRAEnrollRequestOnApproveResponse.Status))
+	return ctrl.Result{}, errors.New("invalid request status " + string(request.WebRAEnrollRequestOnGetResponse.Status))
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
@@ -197,16 +197,25 @@ func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 }
 
 func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {
+	msg := formatAPIError(err)
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionInvalidRequest,
 		cmmeta.ConditionTrue,
 		cmapi.CertificateRequestReasonFailed,
-		err.Error(),
+		msg,
 	)
 
-	return ctrl.Result{}, err
+	return ctrl.Result{}, &apiError{inner: err, msg: msg}
 }
+
+type apiError struct {
+	inner error
+	msg   string
+}
+
+func (e *apiError) Error() string { return e.msg }
+func (e *apiError) Unwrap() error { return e.inner }
 
 func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	setRequestStatusAnnotation(certificateRequest, string(models.REQUESTSTATUS_DENIED))
@@ -222,7 +231,15 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnApproveResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnGetResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+	cmutil.SetCertificateRequestCondition(
+		certificateRequest,
+		cmapi.CertificateRequestConditionApproved,
+		cmmeta.ConditionTrue,
+		"horizon.evertrust.io",
+		"Request approved on Horizon",
+	)
+
 	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)

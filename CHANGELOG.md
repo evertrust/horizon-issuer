@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/evertrust/horizon-issuer/compare/1.0.1...1.0.2) (2026-04-09)
+
+
+### Miscellaneous Chores
+
+* release 1.0.2 ([e99cf19](https://github.com/evertrust/horizon-issuer/commit/e99cf1980d34db2719852b35c3d410d1798fae0a))
+
 ## [1.0.1](https://github.com/evertrust/horizon-issuer/compare/v1.0.0...1.0.1) (2026-02-18)
 
 

@@ -1,13 +1,13 @@
 diff --git a/deploy/chart/templates/manager/manager.yaml b/deploy/chart/templates/manager/manager.yaml
-index 1cc79a7..1737c28 100644
+index 7e4eb4a..8b94b8e 100644
 --- a/deploy/chart/templates/manager/manager.yaml
 +++ b/deploy/chart/templates/manager/manager.yaml
 @@ -47,7 +47,7 @@ spec:
-                     {{- range .Values.manager.args }}
-                     - {{ . }}
-                     {{- end }}
--                  image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
-+                  image: "{{ .Values.manager.image.repository }}:{{ default .Chart.AppVersion .Values.manager.image.tag }}"
-                   imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
-                   livenessProbe:
-                     httpGet:
+         {{- range .Values.manager.args }}
+         - {{ . }}
+         {{- end }}
+-        image: "{{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag }}"
++        image: "{{ .Values.manager.image.repository }}:{{ default .Chart.AppVersion .Values.manager.image.tag }}"
+         imagePullPolicy: {{ .Values.manager.image.pullPolicy }}
+         livenessProbe:
+           httpGet:
