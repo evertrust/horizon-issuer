@@ -1,0 +1,27 @@
+# Grants cert-manager's built-in approver the right to approve CertificateRequests
+# targeting Horizon issuers, so that it approves them concurrently with horizon-issuer.
+# See https://cert-manager.io/docs/usage/certificaterequest/#approver-controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cert-manager-controller-approve:horizon-evertrust-io
+rules:
+  - apiGroups: ["cert-manager.io"]
+    resources: ["signers"]
+    verbs: ["approve"]
+    resourceNames:
+      - "issuers.horizon.evertrust.io/*"
+      - "clusterissuers.horizon.evertrust.io/*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-manager-controller-approve:horizon-evertrust-io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-controller-approve:horizon-evertrust-io
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager

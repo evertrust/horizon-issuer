@@ -78,6 +78,24 @@ func WaitForCertificateRequestReady(certificateRequestName string) func(Gomega) 
 	}
 }
 
+func WaitForCertificateRequestApproved(certificateRequestName string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+			"-o", "jsonpath={.status.conditions[?(@.type=='Approved')].status}")
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), "CertificateRequest %s not approved", certificateRequestName)
+	}
+}
+
+func ExpectCertificateRequestApprovedBy(certificateRequestName string, reason string) {
+	cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+		"-o", "jsonpath={.status.conditions[?(@.type=='Approved')].reason}")
+	output, err := Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to fetch CertificateRequest %s", certificateRequestName)
+	Expect(output).To(Equal(reason), "CertificateRequest %s approved by an unexpected approver", certificateRequestName)
+}
+
 // WaitForIssuerReady returns a function suitable for Gomega's Eventually to
 // assert that the specified issuer (or clusterissuer) reaches Ready status.
 func WaitForIssuerReady(resource string, namespace string) func(Gomega) {

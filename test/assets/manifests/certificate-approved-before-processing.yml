@@ -1,0 +1,11 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-approved-before-processing
+spec:
+  commonName: certificate-approved-before-processing.org
+  secretName: certificate-approved-before-processing
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: valid-clusterissuer
