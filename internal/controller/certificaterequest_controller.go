@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"reflect"
 	"strings"
@@ -297,7 +298,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if !cmutil.CertificateRequestIsApproved(&certificateRequest) {
 		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, "Waiting for approval")
-		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		return ctrl.Result{}, nil
 	}
 
 	if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {

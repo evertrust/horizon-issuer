@@ -1,7 +1,8 @@
 package controller
 
 import (
-	"time"
+	"context"
+	"errors"
 
 	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
 	cmapi "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -16,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -77,7 +79,7 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		})
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(result.RequeueAfter).To(Equal(5 * time.Second))
+		Expect(result).To(Equal(ctrl.Result{}))
 
 		var updated cmapi.CertificateRequest
 		Expect(fakeClient.Get(ctx, types.NamespacedName{Namespace: "ns-b", Name: "req-pending-approval"}, &updated)).To(Succeed())
@@ -88,7 +90,127 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		Expect(ready.Reason).To(Equal(cmapi.CertificateRequestReasonPending))
 		Expect(ready.Message).To(Equal("Waiting for approval"))
 	})
+
+	It("should retry status update on conflict and keep concurrent approval", func() {
+		testScheme := buildTestScheme()
+		issuer := readyIssuer("ns-c", "issuer-c", "issuer-auth")
+		secret := issuerSecret("ns-c", "issuer-auth")
+		certificateRequest := certificateRequestForTests("ns-c", "req-status-conflict", "issuer-c", false)
+		name := types.NamespacedName{Namespace: "ns-c", Name: "req-status-conflict"}
+
+		statusUpdates := 0
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(testScheme).
+			WithStatusSubresource(&cmapi.CertificateRequest{}, &horizonapi.Issuer{}).
+			WithObjects(issuer, secret, certificateRequest).
+			WithInterceptorFuncs(interceptor.Funcs{
+				SubResourceUpdate: func(ctx context.Context, c client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+					statusUpdates++
+					if statusUpdates == 1 {
+						approveConcurrently(ctx, c, name)
+					}
+					return c.SubResource(subResourceName).Update(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, "ns-c")
+		result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: name})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(statusUpdates).To(Equal(2))
+
+		var updated cmapi.CertificateRequest
+		Expect(fakeClient.Get(ctx, name, &updated)).To(Succeed())
+		Expect(cmutil.CertificateRequestIsApproved(&updated)).To(BeTrue())
+
+		ready := cmutil.GetCertificateRequestCondition(&updated, cmapi.CertificateRequestConditionReady)
+		Expect(ready).NotTo(BeNil())
+		Expect(ready.Status).To(Equal(cmmeta.ConditionFalse))
+		Expect(ready.Reason).To(Equal(cmapi.CertificateRequestReasonPending))
+		Expect(ready.Message).To(Equal("Waiting for approval"))
+	})
+
+	It("should retry metadata update on conflict and merge concurrent changes", func() {
+		testScheme := buildTestScheme()
+		certificateRequest := certificateRequestForTests("ns-d", "req-metadata-conflict", "issuer-d", true)
+		name := types.NamespacedName{Namespace: "ns-d", Name: "req-metadata-conflict"}
+
+		updates := 0
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(testScheme).
+			WithObjects(certificateRequest).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					updates++
+					if updates == 1 {
+						// Simulate another controller annotating the object concurrently, making obj stale
+						var latest cmapi.CertificateRequest
+						Expect(c.Get(ctx, name, &latest)).To(Succeed())
+						latest.Annotations["example.com/concurrent"] = "true"
+						Expect(c.Update(ctx, &latest)).To(Succeed())
+					}
+					return c.Update(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		var desired cmapi.CertificateRequest
+		Expect(fakeClient.Get(ctx, name, &desired)).To(Succeed())
+		desired.Annotations["horizon.evertrust.io/request-id"] = "request-123"
+		desired.Finalizers = append(desired.Finalizers, FinalizerName)
+
+		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, "ns-d")
+		Expect(reconciler.updateCertificateRequestMetadataWithRetry(ctx, name, &desired)).To(Succeed())
+		Expect(updates).To(Equal(2))
+
+		var updated cmapi.CertificateRequest
+		Expect(fakeClient.Get(ctx, name, &updated)).To(Succeed())
+		Expect(updated.Annotations).To(HaveKeyWithValue("horizon.evertrust.io/request-id", "request-123"))
+		Expect(updated.Annotations).To(HaveKeyWithValue("example.com/concurrent", "true"))
+		Expect(updated.Finalizers).To(ContainElement(FinalizerName))
+	})
+
+	It("should not retry metadata update on non-conflict errors", func() {
+		testScheme := buildTestScheme()
+		certificateRequest := certificateRequestForTests("ns-e", "req-metadata-error", "issuer-e", true)
+		name := types.NamespacedName{Namespace: "ns-e", Name: "req-metadata-error"}
+
+		updates := 0
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(testScheme).
+			WithObjects(certificateRequest).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					updates++
+					return errors.New("boom")
+				},
+			}).
+			Build()
+
+		var desired cmapi.CertificateRequest
+		Expect(fakeClient.Get(ctx, name, &desired)).To(Succeed())
+		desired.Annotations["horizon.evertrust.io/request-id"] = "request-123"
+
+		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, "ns-e")
+		Expect(reconciler.updateCertificateRequestMetadataWithRetry(ctx, name, &desired)).To(MatchError("boom"))
+		Expect(updates).To(Equal(1))
+	})
 })
+
+func approveConcurrently(ctx context.Context, c client.Client, name types.NamespacedName) {
+	var latest cmapi.CertificateRequest
+	Expect(c.Get(ctx, name, &latest)).To(Succeed())
+	cmutil.SetCertificateRequestCondition(
+		&latest,
+		cmapi.CertificateRequestConditionApproved,
+		cmmeta.ConditionTrue,
+		"cert-manager.io",
+		"approved concurrently",
+	)
+	Expect(c.Status().Update(ctx, &latest)).To(Succeed())
+}
 
 func buildTestScheme() *runtime.Scheme {
 	testScheme := runtime.NewScheme()

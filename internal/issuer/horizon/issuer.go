@@ -163,10 +163,10 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 	case models.REQUESTSTATUS_COMPLETED:
 		return r.handleCompletedRequest(request.WebRAEnrollRequestOnGetResponse, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
-		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnApproveResponse.Status))
+		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnGetResponse.Status))
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
-		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnApproveResponse.Status))
+		setRequestStatusAnnotation(certificateRequest, string(request.WebRAEnrollRequestOnGetResponse.Status))
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
