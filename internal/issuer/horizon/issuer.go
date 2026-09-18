@@ -31,6 +31,34 @@ type HorizonIssuer struct {
 	Client horizon.APIClient
 }
 
+type horizonRequest interface {
+	GetId() string
+	GetStatus() models.RequestStatus
+	GetCertificate() models.Certificate
+}
+
+func requestFromSubmitResponse(response *models.RequestSubmit201Response) (horizonRequest, error) {
+	switch {
+	case response.WebRAEnrollRequestOnSubmitResponse != nil:
+		return response.WebRAEnrollRequestOnSubmitResponse, nil
+	case response.WebRARenewRequestOnSubmitResponse != nil:
+		return response.WebRARenewRequestOnSubmitResponse, nil
+	default:
+		return nil, errors.New("unsupported request type returned by Horizon on submit")
+	}
+}
+
+func requestFromGetResponse(response *models.RequestGet200Response) (horizonRequest, error) {
+	switch {
+	case response.WebRAEnrollRequestOnGetResponse != nil:
+		return response.WebRAEnrollRequestOnGetResponse, nil
+	case response.WebRARenewRequestOnApproveResponse != nil:
+		return response.WebRARenewRequestOnApproveResponse, nil
+	default:
+		return nil, errors.New("unsupported request type returned by Horizon on get")
+	}
+}
+
 // SubmitEnrollRequest is used to initially submit a decentralized enrollement request
 // to an Horizon instance, from a certificate request object. It is run only once in a CSR lifecycle,
 // and sets an annotation on the CertificateRequest object to ensure it is not run again.
@@ -90,7 +118,11 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 	}
 
 	// Update the request with the Horizon request ID
-	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
+	submitted, err := requestFromSubmitResponse(request)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	certificateRequest.Annotations[RequestIdAnnotation] = submitted.GetId()
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -124,7 +156,11 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 	}
 
 	// Update the request with the Horizon request ID
-	certificateRequest.Annotations[RequestIdAnnotation] = request.WebRAEnrollRequestOnSubmitResponse.Id
+	submitted, err := requestFromSubmitResponse(request)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	certificateRequest.Annotations[RequestIdAnnotation] = submitted.GetId()
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -147,17 +183,22 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to fetch request from Horizon"), err)
 	}
 
-	logger.Info(fmt.Sprintf("Handling %s request %s", request.WebRAEnrollRequestOnGetResponse.Status, certificateRequest.UID))
-	switch request.WebRAEnrollRequestOnGetResponse.Status {
+	fetched, err := requestFromGetResponse(request)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info(fmt.Sprintf("Handling %s request %s", fetched.GetStatus(), certificateRequest.UID))
+	switch fetched.GetStatus() {
 	case models.REQUESTSTATUS_COMPLETED:
-		return r.handleCompletedRequest(request.WebRAEnrollRequestOnGetResponse, certificateRequest)
+		return r.handleCompletedRequest(fetched, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
 		return r.handleDeniedRequest(certificateRequest)
 	}
 
-	return ctrl.Result{}, errors.New("invalid request status " + string(request.WebRAEnrollRequestOnGetResponse.Status))
+	return ctrl.Result{}, errors.New("invalid request status " + string(fetched.GetStatus()))
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
@@ -213,7 +254,7 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnGetResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) handleCompletedRequest(request horizonRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionApproved,
@@ -233,11 +274,12 @@ func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollReques
 			certificateRequest.Status.CA = []byte(ca)
 		}
 		if certificate != "" {
-			certificateRequest.Annotations[CertificateIdAnnotation] = request.Certificate.Get().GetId()
-			certificateRequest.Annotations[OwnerAnnotation] = request.Certificate.Get().GetOwner()
-			certificateRequest.Annotations[TeamAnnotation] = request.Certificate.Get().GetTeam()
-			certificateRequest.Annotations[ContactEmailAnnotation] = request.Certificate.Get().GetContactEmail()
-			for _, label := range request.Certificate.Get().GetLabels() {
+			issued := request.GetCertificate()
+			certificateRequest.Annotations[CertificateIdAnnotation] = issued.GetId()
+			certificateRequest.Annotations[OwnerAnnotation] = issued.GetOwner()
+			certificateRequest.Annotations[TeamAnnotation] = issued.GetTeam()
+			certificateRequest.Annotations[ContactEmailAnnotation] = issued.GetContactEmail()
+			for _, label := range issued.GetLabels() {
 				certificateRequest.Annotations[fmt.Sprintf("%s.%s", LabelAnnotation, label.GetKey())] = label.GetValue()
 			}
 
