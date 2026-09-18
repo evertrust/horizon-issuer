@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/evertrust/horizon-issuer/compare/1.1.0...1.1.1) (2026-09-18)
+
+
+### Bug Fixes
+
+* trivy-to-linear action checkout ([#71](https://github.com/evertrust/horizon-issuer/issues/71)) ([c8dc6b4](https://github.com/evertrust/horizon-issuer/commit/c8dc6b49e171a68ec9a8814cb238213fffe7f024))
+
 ## [1.1.0](https://github.com/evertrust/horizon-issuer/compare/1.0.2...1.1.0) (2026-05-05)
 
 
