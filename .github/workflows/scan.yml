@@ -19,6 +19,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout trivy-to-linear action
+        uses: actions/checkout@v4
+        with:
+          repository: evertrust/trivy-to-linear
+          ref: dcf968652d5508d7439b78717f514bdb8bb907bf
+          token: ${{ secrets.TRIVY_TO_LINEAR_TOKEN }}
+          persist-credentials: false
+          path: .github/actions/trivy-to-linear
+
       - name: Setup Trivy
         uses: aquasecurity/setup-trivy@v0.2.6
 
@@ -51,7 +60,7 @@ jobs:
 
       - name: Upload Vulnerabilities to Linear
         if: always()
-        uses: evertrust/trivy-to-linear/.github/actions/trivy-to-linear@dcf968652d5508d7439b78717f514bdb8bb907bf
+        uses: ./.github/actions/trivy-to-linear/.github/actions/trivy-to-linear
         with:
           linear-api-key: ${{ env.LINEAR_API_KEY }}
           linear-team-id: ${{ env.LINEAR_TEAM_ID }}
