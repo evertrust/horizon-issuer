@@ -177,10 +177,7 @@ func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateReques
 
 func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 	// We requeue the request since it still needs to be approved
-	return ctrl.Result{
-		Requeue:      true,
-		RequeueAfter: time.Minute / 4,
-	}, nil
+	return ctrl.Result{RequeueAfter: time.Minute / 4}, nil
 }
 
 func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {
