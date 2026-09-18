@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/evertrust/horizon-issuer/compare/1.0.2...1.1.0) (2026-05-05)
+
+
+### Bug Fixes
+
+* allow templating replicas ([#51](https://github.com/evertrust/horizon-issuer/issues/51)) ([6313a30](https://github.com/evertrust/horizon-issuer/commit/6313a30f545b0edd033acfea929c737e91fa92a4))
+* **error:** un usable error log in horizon issuer ([#56](https://github.com/evertrust/horizon-issuer/issues/56)) ([ddb0e64](https://github.com/evertrust/horizon-issuer/commit/ddb0e64f21004f93b4ed48b54823ae51aa531e15))
+
+
+### Miscellaneous Chores
+
+* request release 1.1.0 ([#58](https://github.com/evertrust/horizon-issuer/issues/58)) ([f394d29](https://github.com/evertrust/horizon-issuer/commit/f394d29bad2206e069ef07dc3427a74d36172af3))
+
 ## [1.0.2](https://github.com/evertrust/horizon-issuer/compare/1.0.1...1.0.2) (2026-04-09)
 
 
