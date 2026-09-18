@@ -453,6 +453,72 @@ var _ = Describe("Manager", Ordered, func() {
 		// 	})
 		// })
 
+		Context("with cert-manager's approver allowed to approve Horizon requests", Ordered, func() {
+			BeforeAll(func() {
+				By("allowing cert-manager's approver to approve Horizon signers")
+				utils.ApplyManifest("test/assets/manifests/cert-manager-approver-rbac.yml")
+			})
+
+			AfterAll(func() {
+				By("revoking cert-manager's approver rights on Horizon signers")
+				cmd := exec.Command("kubectl", "delete", "-f", "test/assets/manifests/cert-manager-approver-rbac.yml")
+				_, _ = utils.Run(cmd)
+			})
+
+			It("can issue a certificate approved concurrently by cert-manager", func() {
+				utils.ApplyManifest("test/assets/manifests/certificate-approved-concurrently.yml")
+				Eventually(utils.WaitForCertificateRequestApproved("certificate-approved-concurrently-1"), 3*time.Minute, time.Second).Should(Succeed())
+				Eventually(utils.WaitForCertificateReady("certificate-approved-concurrently"), 3*time.Minute, time.Second).Should(Succeed())
+
+				By("ensuring the request was submitted and completed on Horizon")
+				utils.ExpectCertificateRequestAnnotations("certificate-approved-concurrently-1", map[string]string{
+					"horizon.evertrust.io/request-status": "completed",
+				})
+			})
+
+			// Regression test for https://github.com/evertrust/horizon-issuer/issues/41: a request
+			// approved by another approver before horizon-issuer processed it must not get stuck.
+			It("converges a request approved by cert-manager before being processed", func() {
+				By("stopping the controller-manager")
+				cmd := exec.Command("kubectl", "scale", "deployment/horizon-issuer-controller-manager", "-n", namespace, "--replicas=0")
+				_, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to scale down the controller-manager")
+				cmd = exec.Command("kubectl", "wait", "pods", "-l", "control-plane=controller-manager", "-n", namespace,
+					"--for=delete", "--timeout=2m")
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Controller-manager pod still running")
+
+				By("letting cert-manager approve a request that has not been submitted to Horizon")
+				utils.ApplyManifest("test/assets/manifests/certificate-approved-before-processing.yml")
+				Eventually(utils.WaitForCertificateRequestApproved("certificate-approved-before-processing-1"), 3*time.Minute, time.Second).Should(Succeed())
+				utils.ExpectCertificateRequestApprovedBy("certificate-approved-before-processing-1", "cert-manager.io")
+				cmd = exec.Command("kubectl", "get", "certificaterequests/certificate-approved-before-processing-1",
+					"-o", "jsonpath={.metadata.annotations.horizon\\.evertrust\\.io/request-id}")
+				output, err := utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(output).To(BeEmpty(), "request should not have been submitted to Horizon yet")
+
+				By("restarting the controller-manager")
+				cmd = exec.Command("kubectl", "scale", "deployment/horizon-issuer-controller-manager", "-n", namespace, "--replicas=1")
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to scale up the controller-manager")
+				cmd = exec.Command("kubectl", "rollout", "status", "deployment/horizon-issuer-controller-manager", "-n", namespace, "--timeout=2m")
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Controller-manager did not come back up")
+				cmd = exec.Command("kubectl", "get", "pods", "-l", "control-plane=controller-manager", "-n", namespace,
+					"-o", "jsonpath={.items[0].metadata.name}")
+				controllerPodName, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("waiting for the already approved request to be issued")
+				Eventually(utils.WaitForCertificateReady("certificate-approved-before-processing"), 3*time.Minute, time.Second).Should(Succeed())
+				utils.ExpectCertificateRequestApprovedBy("certificate-approved-before-processing-1", "cert-manager.io")
+				utils.ExpectCertificateRequestAnnotations("certificate-approved-before-processing-1", map[string]string{
+					"horizon.evertrust.io/request-status": "completed",
+				})
+			})
+		})
+
 		It("can revoke a certificate", func() {
 			By("creating an issuer that revokes certificates")
 			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-revokecertificates.yml")
