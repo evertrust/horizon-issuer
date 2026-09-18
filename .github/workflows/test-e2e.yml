@@ -8,8 +8,14 @@ on:
 
 jobs:
   test-e2e:
-    name: Run on Ubuntu
+    name: Horizon ${{ matrix.horizon }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        horizon: ["2.8.4","2.9.5" ,"2.10.7"]
+    env:
+      HORIZON_IMAGE_TAG: ${{ matrix.horizon }}
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
