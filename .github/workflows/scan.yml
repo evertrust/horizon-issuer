@@ -29,7 +29,7 @@ jobs:
           path: .github/actions/trivy-to-linear
 
       - name: Setup Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.2.6
 
       - name: Fetch secrets via Vault
         uses: hashicorp/vault-action@v2
