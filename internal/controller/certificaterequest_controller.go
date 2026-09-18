@@ -296,11 +296,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	if !cmutil.CertificateRequestIsApproved(&certificateRequest) {
-		setReadyCondition(cmmeta.ConditionFalse, cmapi.CertificateRequestReasonPending, "Waiting for approval")
-		return ctrl.Result{}, nil
-	}
-
 	if _, ok := certificateRequest.Annotations[horizonissuer.RequestIdAnnotation]; ok {
 		return r.Issuer.UpdateRequest(ctx, &certificateRequest)
 	}
@@ -398,6 +393,11 @@ func applyManagedFinalizer(latest, desired *cmapi.CertificateRequest) {
 }
 
 func copyManagedStatusFields(latest, desired *cmapi.CertificateRequest) {
+	if approved := findConditionByType(desired.Status.Conditions, cmapi.CertificateRequestConditionApproved); approved != nil &&
+		!cmutil.CertificateRequestIsApproved(latest) && !cmutil.CertificateRequestIsDenied(latest) {
+		cmutil.SetCertificateRequestCondition(latest, approved.Type, approved.Status, approved.Reason, approved.Message)
+	}
+
 	for _, conditionType := range []cmapi.CertificateRequestConditionType{
 		cmapi.CertificateRequestConditionReady,
 		cmapi.CertificateRequestConditionInvalidRequest,

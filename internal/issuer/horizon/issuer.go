@@ -232,13 +232,15 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 }
 
 func (r *HorizonIssuer) handleCompletedRequest(request *models.WebRAEnrollRequestOnGetResponse, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	cmutil.SetCertificateRequestCondition(
-		certificateRequest,
-		cmapi.CertificateRequestConditionApproved,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
-		"Request approved on Horizon",
-	)
+	if !cmutil.CertificateRequestIsApproved(certificateRequest) && !cmutil.CertificateRequestIsDenied(certificateRequest) {
+		cmutil.SetCertificateRequestCondition(
+			certificateRequest,
+			cmapi.CertificateRequestConditionApproved,
+			cmmeta.ConditionTrue,
+			"horizon.evertrust.io",
+			"Request approved on Horizon",
+		)
+	}
 
 	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {

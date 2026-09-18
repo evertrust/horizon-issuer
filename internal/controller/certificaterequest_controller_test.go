@@ -58,11 +58,11 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		Expect(updated.Annotations["horizon.evertrust.io/request-id"]).To(BeEmpty())
 	})
 
-	It("should wait for approval before submit path", func() {
+	It("should process unapproved requests through submit path without waiting for approval", func() {
 		testScheme := buildTestScheme()
 		issuer := readyIssuer("ns-b", "issuer-b", "issuer-auth")
 		secret := issuerSecret("ns-b", "issuer-auth")
-		certificateRequest := certificateRequestForTests("ns-b", "req-pending-approval", "issuer-b", false)
+		certificateRequest := certificateRequestForTests("ns-b", "req-not-approved", "issuer-b", false)
 
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(testScheme).
@@ -74,21 +74,22 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		result, err := reconciler.Reconcile(ctx, ctrl.Request{
 			NamespacedName: types.NamespacedName{
 				Namespace: "ns-b",
-				Name:      "req-pending-approval",
+				Name:      "req-not-approved",
 			},
 		})
 
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("certificates.cert-manager.io \"missing-cert\" not found"))
 		Expect(result).To(Equal(ctrl.Result{}))
 
 		var updated cmapi.CertificateRequest
-		Expect(fakeClient.Get(ctx, types.NamespacedName{Namespace: "ns-b", Name: "req-pending-approval"}, &updated)).To(Succeed())
+		Expect(fakeClient.Get(ctx, types.NamespacedName{Namespace: "ns-b", Name: "req-not-approved"}, &updated)).To(Succeed())
+		Expect(cmutil.CertificateRequestIsApproved(&updated)).To(BeFalse())
 
 		ready := cmutil.GetCertificateRequestCondition(&updated, cmapi.CertificateRequestConditionReady)
 		Expect(ready).NotTo(BeNil())
 		Expect(ready.Status).To(Equal(cmmeta.ConditionFalse))
 		Expect(ready.Reason).To(Equal(cmapi.CertificateRequestReasonPending))
-		Expect(ready.Message).To(Equal("Waiting for approval"))
 	})
 
 	It("should retry status update on conflict and keep concurrent approval", func() {
@@ -117,7 +118,9 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, "ns-c")
 		result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: name})
 
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("certificates.cert-manager.io \"missing-cert\" not found"))
+		Expect(err.Error()).NotTo(ContainSubstring("the object has been modified"))
 		Expect(result).To(Equal(ctrl.Result{}))
 		Expect(statusUpdates).To(Equal(2))
 
@@ -129,7 +132,6 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		Expect(ready).NotTo(BeNil())
 		Expect(ready.Status).To(Equal(cmmeta.ConditionFalse))
 		Expect(ready.Reason).To(Equal(cmapi.CertificateRequestReasonPending))
-		Expect(ready.Message).To(Equal("Waiting for approval"))
 	})
 
 	It("should retry metadata update on conflict and merge concurrent changes", func() {
@@ -196,6 +198,33 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, "ns-e")
 		Expect(reconciler.updateCertificateRequestMetadataWithRetry(ctx, name, &desired)).To(MatchError("boom"))
 		Expect(updates).To(Equal(1))
+	})
+
+	It("should reflect the Horizon approval when no approver has decided yet", func() {
+		latest := certificateRequestForTests("ns-f", "req", "issuer-f", false)
+		desired := latest.DeepCopy()
+		cmutil.SetCertificateRequestCondition(desired, cmapi.CertificateRequestConditionApproved, cmmeta.ConditionTrue,
+			"horizon.evertrust.io", "Request approved on Horizon")
+
+		copyManagedStatusFields(latest, desired)
+
+		approved := cmutil.GetCertificateRequestCondition(latest, cmapi.CertificateRequestConditionApproved)
+		Expect(approved).NotTo(BeNil())
+		Expect(approved.Reason).To(Equal("horizon.evertrust.io"))
+	})
+
+	It("should not modify an approval set by another approver", func() {
+		latest := certificateRequestForTests("ns-g", "req", "issuer-g", true)
+		desired := latest.DeepCopy()
+		cmutil.SetCertificateRequestCondition(desired, cmapi.CertificateRequestConditionApproved, cmmeta.ConditionTrue,
+			"horizon.evertrust.io", "Request approved on Horizon")
+
+		copyManagedStatusFields(latest, desired)
+
+		approved := cmutil.GetCertificateRequestCondition(latest, cmapi.CertificateRequestConditionApproved)
+		Expect(approved).NotTo(BeNil())
+		Expect(approved.Reason).To(Equal("cert-manager.io"))
+		Expect(approved.Message).To(Equal("approved for tests"))
 	})
 })
 
