@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-with-challenge-empty-template
+spec:
+  commonName: certificate-with-challenge-empty-template.org
+  dnsNames:
+    - certificate-with-challenge-empty-template.org
+    - www.certificate-with-challenge-empty-template.org
+  secretName: certificate-with-challenge-empty-template
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: clusterissuer-with-challenge-empty-template
