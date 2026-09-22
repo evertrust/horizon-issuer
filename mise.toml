@@ -101,6 +101,14 @@ depends = ["setup-kind-cluster"]
 depends_post = ["cleanup-kind-cluster"]
 run = "go test -tags=e2e ./test/e2e/ -v -ginkgo.v"
 
+[tasks."test:e2e:dev"]
+description = "Run end-to-end testing against the Horizon development image"
+usage = '''
+flag "--image <image>" help="Horizon development image" default="quay.io/evertrust/horizon-dev:main"
+flag "--version <version>" help="Horizon version this image stands for" default="2.11.0"
+'''
+run = "HORIZON_IMAGE=${usage_image} HORIZON_IMAGE_TAG=${usage_version} mise run test:e2e"
+
 [tasks."test:helm"]
 description = "Run Helm tests"
 depends = ["setup-kind-cluster", "build:docker"]
