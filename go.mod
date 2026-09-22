@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/cert-manager/cert-manager v1.19.3
-	github.com/evertrust/horizon-go/v2 v2.10.2
+	github.com/evertrust/horizon-go/v2 v2.10.3
 	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
