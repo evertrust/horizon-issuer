@@ -35,6 +35,7 @@ func (o *HorizonHealthChecker) Check() error {
 		WithValues("url", o.Client.GetConfig().Host)
 
 	logger.V(1).Info("Client setup")
+	defer o.Client.CloseIdleConnections()
 
 	_, _, err := o.Client.SecurityPrincipalAPI.SecurityPrincipalSelf(context.Background()).Execute()
 	if err != nil {
