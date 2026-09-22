@@ -7,6 +7,11 @@ import (
 	"github.com/evertrust/horizon-go/v2/models"
 )
 
+const (
+	errCode  = "REQ-002"
+	errTitle = "Invalid Request"
+)
+
 func TestFormatBasicError(t *testing.T) {
 	detail := "Label element 'environment' is mandatory | Label element 'application_name' is mandatory"
 
@@ -19,30 +24,30 @@ func TestFormatBasicError(t *testing.T) {
 			name: "code title and detail",
 			be: func() models.BasicError {
 				be := models.BasicError{
-					Error:   "REQ-002",
-					Title:   "Invalid Request",
+					Error:   errCode,
+					Title:   errTitle,
 					Status:  400,
-					Message: "Invalid Request",
+					Message: errTitle,
 				}
 				be.SetDetail(detail)
 				return be
 			}(),
-			want: "REQ-002 - Invalid Request: " + detail,
+			want: errCode + " - " + errTitle + ": " + detail,
 		},
 		{
 			name: "code and title without detail",
 			be: models.BasicError{
-				Error: "REQ-002",
-				Title: "Invalid Request",
+				Error: errCode,
+				Title: errTitle,
 			},
-			want: "REQ-002 - Invalid Request",
+			want: errCode + " - " + errTitle,
 		},
 		{
 			name: "title only",
 			be: models.BasicError{
-				Title: "Invalid Request",
+				Title: errTitle,
 			},
-			want: "Invalid Request",
+			want: errTitle,
 		},
 		{
 			name: "falls back to message when title is empty",
@@ -65,13 +70,13 @@ func TestFormatBasicError(t *testing.T) {
 			name: "must not contain the upstream %!s formatting marker",
 			be: func() models.BasicError {
 				be := models.BasicError{
-					Error: "REQ-002",
-					Title: "Invalid Request",
+					Error: errCode,
+					Title: errTitle,
 				}
 				be.SetDetail(detail)
 				return be
 			}(),
-			want: "REQ-002 - Invalid Request: " + detail,
+			want: errCode + " - " + errTitle + ": " + detail,
 		},
 		{
 			name: "empty error returns empty string",
