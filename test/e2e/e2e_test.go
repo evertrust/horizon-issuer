@@ -419,6 +419,46 @@ var _ = Describe("Manager", Ordered, func() {
 			utils.ExpectCertificateRequestAnnotations("certificate-with-overridetemplate-override-1", expectedAnnotations)
 		})
 
+		It("can issue a certificate on a profile in challenge mode", func() {
+			if !utils.HorizonSupportsWebRAChallenge() {
+				Skip(fmt.Sprintf("Horizon %s does not support the WebRA challenge mode", utils.HorizonImageTag()))
+			}
+
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-challenge.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-challenge", ""), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ApplyManifest("test/assets/manifests/certificate-with-challenge.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-challenge"), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations("certificate-with-challenge-1", expectedAnnotations)
+		})
+
+		It("can issue a certificate on a profile in challenge mode without certificate template", func() {
+			if !utils.HorizonSupportsWebRAChallenge() {
+				Skip(fmt.Sprintf("Horizon %s does not support the WebRA challenge mode", utils.HorizonImageTag()))
+			}
+
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-challenge-empty-template.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-challenge-empty-template", ""), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ApplyManifest("test/assets/manifests/certificate-with-challenge-empty-template.yml")
+			Eventually(utils.WaitForCertificateReady("certificate-with-challenge-empty-template"), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("ensuring the identity of the certificate comes from the certificate request")
+			cmd := exec.Command("kubectl", "get", "secret", "certificate-with-challenge-empty-template",
+				"-o", "jsonpath={.data.tls\\.crt}")
+			output, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			tlsChain, err := base64.StdEncoding.DecodeString(output)
+			Expect(err).NotTo(HaveOccurred())
+			block, _ := pem.Decode(tlsChain)
+			Expect(block).NotTo(BeNil(), "tls.crt should be PEM encoded")
+			cert, err := x509.ParseCertificate(block.Bytes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cert.Subject.CommonName).To(Equal("certificate-with-challenge-empty-template.org"))
+			Expect(cert.DNSNames).To(ConsistOf(
+				"certificate-with-challenge-empty-template.org",
+				"www.certificate-with-challenge-empty-template.org",
+			))
+		})
+
 		It("can renew a certificate", func() {
 			By("issuing a initial certificate")
 			utils.ApplyManifest("test/assets/manifests/certificate-to-renew.yml")

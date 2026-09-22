@@ -41,15 +41,18 @@ const (
 	defaultKindBinary  = "kind"
 	defaultKindCluster = "kind"
 
-	horizonHelmRepository  = "https://repo.evertrust.io/repository/charts"
-	horizonNamespace       = "horizon"
-	horizonImageRegistry   = "quay.io/evertrust"
-	horizonImageName       = "horizon"
-	horizonImageTagEnv     = "HORIZON_IMAGE_TAG"
-	defaultHorizonImageTag = "2.8.0"
-	horizonLicensePath     = "test/assets/horizon.lic"
-	horizonAdminPassword   = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn." //nolint:lll
+	horizonHelmRepository    = "https://repo.evertrust.io/repository/charts"
+	horizonNamespace         = "horizon"
+	horizonImageRegistry     = "quay.io/evertrust"
+	horizonImageName         = "horizon"
+	horizonImageTagEnv       = "HORIZON_IMAGE_TAG"
+	horizonImageEnv          = "HORIZON_IMAGE"
+	horizonLicensePath       = "test/assets/horizon.lic"
+	horizonChallengeSeedPath = "test/assets/manifests/mongo-initdb-challenge.yml"
+	horizonAdminPassword     = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn." //nolint:lll
 )
+
+const defaultHorizonImageTag = "2.8.0"
 
 func warnError(err error) {
 	_, _ = fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
@@ -230,9 +233,42 @@ func HorizonImageTag() string {
 	return defaultHorizonImageTag
 }
 
+// HorizonImage returns the registry, repository and tag of the Horizon image under test.
+// HORIZON_IMAGE runs an unreleased Horizon build such as quay.io/evertrust/horizon-dev:main,
+// HORIZON_IMAGE_TAG still being the Horizon version this build stands for.
+func HorizonImage() (registry string, repository string, tag string) {
+	image := os.Getenv(horizonImageEnv)
+	if image == "" {
+		return horizonImageRegistry, horizonImageName, HorizonImageTag()
+	}
+
+	tag = "latest"
+	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
+		image, tag = image[:i], image[i+1:]
+	}
+	if i := strings.LastIndex(image, "/"); i >= 0 {
+		registry, image = image[:i], image[i+1:]
+	}
+	return registry, image, tag
+}
+
+// HorizonSupportsWebRAChallenge tells whether the Horizon version under test supports
+// the challenge authorization mode on WebRA profiles.
+func HorizonSupportsWebRAChallenge() bool {
+	var major, minor int
+	if _, err := fmt.Sscanf(HorizonImageTag(), "%d.%d", &major, &minor); err != nil {
+		return false
+	}
+	return major > 2 || (major == 2 && minor >= 11)
+}
+
 func InstallHorizon() error {
-	horizonImage := fmt.Sprintf("%s/%s:%s", horizonImageRegistry, horizonImageName, HorizonImageTag())
-	_, _ = fmt.Fprintf(GinkgoWriter, "Installing Horizon %s\n", horizonImage)
+	registry, repository, tag := HorizonImage()
+	horizonImage := fmt.Sprintf("%s:%s", repository, tag)
+	if registry != "" {
+		horizonImage = fmt.Sprintf("%s/%s", registry, horizonImage)
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "Installing Horizon %s from %s\n", HorizonImageTag(), horizonImage)
 
 	cmd := exec.Command("docker", "pull", horizonImage)
 	if _, err := Run(cmd); err != nil {
@@ -267,6 +303,13 @@ func InstallHorizon() error {
 		return err
 	}
 
+	if HorizonSupportsWebRAChallenge() {
+		cmd = exec.Command("kubectl", "apply", "-f", horizonChallengeSeedPath, "-n", horizonNamespace)
+		if _, err := Run(cmd); err != nil {
+			return err
+		}
+	}
+
 	cmd = exec.Command("helm", "repo", "add", "evertrust", horizonHelmRepository, "--force-update")
 	if _, err := Run(cmd); err != nil {
 		return err
@@ -277,9 +320,9 @@ func InstallHorizon() error {
 		"--create-namespace",
 		"--install",
 		"--values", "test/assets/values.yaml",
-		"--set", fmt.Sprintf("image.registry=%s", horizonImageRegistry),
-		"--set", fmt.Sprintf("image.repository=%s", horizonImageName),
-		"--set", fmt.Sprintf("image.tag=%s", HorizonImageTag()),
+		"--set", fmt.Sprintf("image.registry=%s", registry),
+		"--set", fmt.Sprintf("image.repository=%s", repository),
+		"--set", fmt.Sprintf("image.tag=%s", tag),
 	)
 	if _, err := Run(cmd); err != nil {
 		return err

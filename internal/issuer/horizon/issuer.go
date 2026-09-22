@@ -192,7 +192,12 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 	switch fetched.GetStatus() {
 	case models.REQUESTSTATUS_COMPLETED:
 		return r.handleCompletedRequest(fetched, certificateRequest)
-	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
+	case models.REQUESTSTATUS_APPROVED:
+		if challenge, ok := challengeFromRequest(request.WebRAEnrollRequestOnGetResponse); ok {
+			return r.ConsumeChallenge(ctx, request.WebRAEnrollRequestOnGetResponse, challenge, certificateRequest)
+		}
+		return r.handlePendingRequest()
+	case models.REQUESTSTATUS_PENDING:
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
 		return r.handleDeniedRequest(certificateRequest)

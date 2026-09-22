@@ -8,14 +8,19 @@ on:
 
 jobs:
   test-e2e:
-    name: Horizon ${{ matrix.horizon }}
+    name: Horizon ${{ matrix.name || matrix.horizon }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         horizon: ["2.8.4","2.9.5" ,"2.10.7"]
+        include:
+          - name: dev (main)
+            horizon: "2.11.0"
+            image: quay.io/evertrust/horizon-dev:main
     env:
       HORIZON_IMAGE_TAG: ${{ matrix.horizon }}
+      HORIZON_IMAGE: ${{ matrix.image }}
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
