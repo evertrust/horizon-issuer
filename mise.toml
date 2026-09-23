@@ -99,7 +99,7 @@ run = "go test ./... -coverprofile cover.out"
 description = "Run end-to-end testing"
 depends = ["setup-kind-cluster"]
 depends_post = ["cleanup-kind-cluster"]
-run = "go test -tags=e2e ./test/e2e/ -v -ginkgo.v"
+run = "go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 40m"
 
 [tasks."test:helm"]
 description = "Run Helm tests"

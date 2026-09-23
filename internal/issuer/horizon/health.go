@@ -6,30 +6,30 @@ import (
 	"github.com/evertrust/horizon-go/v2"
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type HealthChecker interface {
-	Check() error
+	Check(ctx context.Context) error
 }
 
-type HealthCheckerBuilder func(logr.Logger, *horizonapi.IssuerSpec, corev1.Secret) (*HorizonHealthChecker, error)
+type HealthCheckerBuilder func(logr.Logger, *horizonapi.IssuerSpec, Credentials) (*HorizonHealthChecker, error)
 
-func HealthCheckerFromIssuer(logger logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*HorizonHealthChecker, error) {
-	client, err := ClientFromIssuer(logger, issuerSpec, secret)
+func HealthCheckerFromIssuer(logger logr.Logger, issuerSpec *horizonapi.IssuerSpec, creds Credentials) (*HorizonHealthChecker, error) {
+	client, err := ClientFromIssuer(logger, issuerSpec, creds)
 	if err != nil {
 		return nil, err
 	}
 
-	return &HorizonHealthChecker{Client: client}, nil
+	return &HorizonHealthChecker{Client: client, Credentials: creds}, nil
 }
 
 type HorizonHealthChecker struct {
-	Client *horizon.APIClient
+	Client      *horizon.APIClient
+	Credentials Credentials
 }
 
-func (o *HorizonHealthChecker) Check() error {
+func (o *HorizonHealthChecker) Check(ctx context.Context) error {
 	logger := log.Log.
 		WithName("horizon.healthcheck").
 		WithValues("url", o.Client.GetConfig().Host)
@@ -37,7 +37,7 @@ func (o *HorizonHealthChecker) Check() error {
 	logger.V(1).Info("Client setup")
 	defer o.Client.CloseIdleConnections()
 
-	_, _, err := o.Client.SecurityPrincipalAPI.SecurityPrincipalSelf(context.Background()).Execute()
+	_, _, err := o.Client.SecurityPrincipalAPI.SecurityPrincipalSelf(o.Credentials.Context(ctx)).Execute()
 	if err != nil {
 		logger.V(1).Info("Call to /api/v1/security/principals/self returned an error", "error", err.Error())
 		return err

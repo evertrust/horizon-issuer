@@ -191,7 +191,7 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 	logger.Info(fmt.Sprintf("Handling %s request %s", fetched.GetStatus(), certificateRequest.UID))
 	switch fetched.GetStatus() {
 	case models.REQUESTSTATUS_COMPLETED:
-		return r.handleCompletedRequest(fetched, certificateRequest)
+		return r.handleCompletedRequest(ctx, fetched, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
@@ -254,7 +254,7 @@ func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.Certificat
 	return ctrl.Result{}, nil
 }
 
-func (r *HorizonIssuer) handleCompletedRequest(request horizonRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+func (r *HorizonIssuer) handleCompletedRequest(ctx context.Context, request horizonRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
 		cmapi.CertificateRequestConditionApproved,
@@ -263,7 +263,7 @@ func (r *HorizonIssuer) handleCompletedRequest(request horizonRequest, certifica
 		"Request approved on Horizon",
 	)
 
-	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
+	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(ctx, request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
 	}

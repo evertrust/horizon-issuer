@@ -28,6 +28,7 @@ import (
 // +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
 // +kubebuilder:printcolumn:name="Horizon URL",type=string,JSONPath=`.spec.url`
 // +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.authSecretName`
+// +kubebuilder:printcolumn:name="Service Account",type=string,JSONPath=`.spec.serviceAccount.name`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
 
 // ClusterIssuer is the Schema for the clusterissuers API

@@ -15,7 +15,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret corev1.Secret) (*horizon.APIClient, error) {
+// ClientFromIssuer builds a Horizon API client from an issuer spec and its
+// credentials. With a service account, the token is not stored on the client:
+// callers must pass a context returned by Credentials.Context to every call.
+func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, creds Credentials) (*horizon.APIClient, error) {
+	if err := creds.validate(); err != nil {
+		return nil, err
+	}
+
 	config := horizon.NewConfiguration()
 	issuerSpec.URL = strings.TrimSuffix(issuerSpec.URL, "/")
 
@@ -47,34 +54,48 @@ func ClientFromIssuer(log logr.Logger, issuerSpec *horizonapi.IssuerSpec, secret
 		config.SetProxyUrl(proxyUrl)
 	}
 
+	if creds.ServiceAccount != nil {
+		log.V(1).Info("Using JWKS service account authentication", "serviceAccount", creds.ServiceAccount.Name)
+		return horizon.NewAPIClient(config), nil
+	}
+
+	if err := configureSecretAuth(config, *creds.Secret); err != nil {
+		return nil, err
+	}
+
+	return horizon.NewAPIClient(config), nil
+}
+
+// configureSecretAuth sets password or certificate authentication from a
+// Kubernetes Secret.
+func configureSecretAuth(config *horizon.Configuration, secret corev1.Secret) error {
 	switch secret.Type {
 	case corev1.SecretTypeTLS:
 		if _, ok := secret.Data["tls.crt"]; !ok {
-			return nil, fmt.Errorf("%s: %v", "Missing tls.crt in secret", secret.Name)
+			return fmt.Errorf("%s: %v", "Missing tls.crt in secret", secret.Name)
 		}
 		if _, ok := secret.Data["tls.key"]; !ok {
-			return nil, fmt.Errorf("%s: %v", "Missing tls.key in secret", secret.Name)
+			return fmt.Errorf("%s: %v", "Missing tls.key in secret", secret.Name)
 		}
 
 		cert, err := tls.X509KeyPair(secret.Data["tls.crt"], secret.Data["tls.key"])
 		if err != nil {
-			return nil, fmt.Errorf("%s: %v", "Failed to load TLS certificate", err)
+			return fmt.Errorf("%s: %v", "Failed to load TLS certificate", err)
 		}
 		config.SetCertAuth(cert)
 	case corev1.SecretTypeOpaque:
 		if _, ok := secret.Data["username"]; !ok {
-			return nil, fmt.Errorf("%s: %v", "Missing username in secret", secret.Name)
+			return fmt.Errorf("%s: %v", "Missing username in secret", secret.Name)
 		}
 		if _, ok := secret.Data["password"]; !ok {
-			return nil, fmt.Errorf("%s: %v", "Missing password in secret", secret.Name)
+			return fmt.Errorf("%s: %v", "Missing password in secret", secret.Name)
 		}
 		config.SetPasswordAuth(string(secret.Data["username"]), string(secret.Data["password"]))
 	default:
-		return nil, fmt.Errorf("%s: %v", "Unsupported secret type", secret.Type)
+		return fmt.Errorf("%s: %v", "Unsupported secret type", secret.Type)
 	}
 
-	client := horizon.NewAPIClient(config)
-	return client, nil
+	return nil
 }
 
 func formatAPIError(err error) string {

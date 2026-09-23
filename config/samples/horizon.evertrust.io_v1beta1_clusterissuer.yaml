@@ -6,4 +6,15 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: clusterissuer-sample
 spec:
-  # TODO(user): Add fields here
+  url: https://horizon.yourcompany.com
+  profile: kubernetes
+  # Static credentials: an Opaque Secret with username/password keys, or a
+  # kubernetes.io/tls Secret, in the cluster resource namespace.
+  authSecretName: horizon-credentials
+  # Or a JWKS service account: the controller requests a token for the
+  # referenced Kubernetes ServiceAccount (in the cluster resource namespace).
+  # Uncomment and drop authSecretName; only one of the two is allowed.
+  # serviceAccount:
+  #   name: horizon-issuer
+  #   serviceAccountRef:
+  #     name: horizon-issuer

@@ -109,13 +109,13 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("%w", err)
 	}
 
-	var secretNamespace string
+	var resourceNamespace string
 	switch issuer.(type) {
 	case *horizonapi.Issuer:
-		secretNamespace = certificateRequest.Namespace
+		resourceNamespace = certificateRequest.Namespace
 		log = log.WithValues("issuer", issuer.GetName())
 	case *horizonapi.ClusterIssuer:
-		secretNamespace = r.ClusterResourceNamespace
+		resourceNamespace = r.ClusterResourceNamespace
 		log = log.WithValues("clusterissuer", issuer.GetName())
 	default:
 		return ctrl.Result{}, nil
@@ -134,26 +134,20 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, nil
 	}
 
-	secretName := types.NamespacedName{
-		Name:      issuerSpec.AuthSecretName,
-		Namespace: secretNamespace,
-	}
-
-	var secret corev1.Secret
-
-	err = r.Get(ctx, secretName, &secret)
+	creds, err := credentialsFromIssuer(ctx, r.Client, issuerSpec, resourceNamespace)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w, secret name: %s, reason: %v", errGetAuthSecret, secretName, err)
+		return ctrl.Result{}, err
 	}
 
 	// From here, we're ready to instantiate a Horizon client
-	clientFromIssuer, err := horizonissuer.ClientFromIssuer(log, issuerSpec, secret)
+	clientFromIssuer, err := horizonissuer.ClientFromIssuer(log, issuerSpec, creds)
 	if err != nil || clientFromIssuer == nil {
 		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}
 	defer clientFromIssuer.CloseIdleConnections()
 
 	r.Issuer.Client = *clientFromIssuer
+	ctx = creds.Context(ctx)
 
 	if issuerSpec.RevokeCertificates {
 		// examine DeletionTimestamp to determine if object is under deletion
