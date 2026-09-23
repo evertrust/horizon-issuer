@@ -133,6 +133,7 @@ extraObjects:
           displayName: [],
           description: [],
           enabled: true,
+          thirdPartyDiscoverySync: false,
           pkiConnector: 'issuer',
           csrDataMapping: {},
           authorizationLevels: {

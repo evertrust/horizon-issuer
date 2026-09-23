@@ -41,13 +41,14 @@ const (
 	defaultKindBinary  = "kind"
 	defaultKindCluster = "kind"
 
-	horizonHelmRepository = "https://repo.evertrust.io/repository/charts"
-	horizonNamespace      = "horizon"
-	horizonImageRegistry  = "quay.io/evertrust"
-	horizonImageName      = "horizon"
-	horizonImageTag       = "2.8.0"
-	horizonLicensePath    = "test/assets/horizon.lic"
-	horizonAdminPassword  = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn." //nolint:lll
+	horizonHelmRepository  = "https://repo.evertrust.io/repository/charts"
+	horizonNamespace       = "horizon"
+	horizonImageRegistry   = "quay.io/evertrust"
+	horizonImageName       = "horizon"
+	horizonImageTagEnv     = "HORIZON_IMAGE_TAG"
+	defaultHorizonImageTag = "2.8.0"
+	horizonLicensePath     = "test/assets/horizon.lic"
+	horizonAdminPassword   = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn." //nolint:lll
 )
 
 func warnError(err error) {
@@ -239,8 +240,17 @@ func IsCertManagerCRDsInstalled() bool {
 	return false
 }
 
+// HorizonImageTag returns the Horizon version under test, overridable with HORIZON_IMAGE_TAG.
+func HorizonImageTag() string {
+	if tag := os.Getenv(horizonImageTagEnv); tag != "" {
+		return tag
+	}
+	return defaultHorizonImageTag
+}
+
 func InstallHorizon() error {
-	horizonImage := fmt.Sprintf("%s/%s:%s", horizonImageRegistry, horizonImageName, horizonImageTag)
+	horizonImage := fmt.Sprintf("%s/%s:%s", horizonImageRegistry, horizonImageName, HorizonImageTag())
+	_, _ = fmt.Fprintf(GinkgoWriter, "Installing Horizon %s\n", horizonImage)
 
 	cmd := exec.Command("docker", "pull", horizonImage)
 	if _, err := Run(cmd); err != nil {
@@ -287,7 +297,7 @@ func InstallHorizon() error {
 		"--values", "test/assets/values.yaml",
 		"--set", fmt.Sprintf("image.registry=%s", horizonImageRegistry),
 		"--set", fmt.Sprintf("image.repository=%s", horizonImageName),
-		"--set", fmt.Sprintf("image.tag=%s", horizonImageTag),
+		"--set", fmt.Sprintf("image.tag=%s", HorizonImageTag()),
 	)
 	if _, err := Run(cmd); err != nil {
 		return err

@@ -153,6 +153,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil || clientFromIssuer == nil {
 		return ctrl.Result{}, fmt.Errorf("%s: %v", "Unable to instantiate an Horizon client", err)
 	}
+	defer clientFromIssuer.CloseIdleConnections()
 
 	r.Issuer.Client = *clientFromIssuer
 
