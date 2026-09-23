@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/tink-crypto/tink-go/v2/aead"
 	"github.com/tink-crypto/tink-go/v2/insecurecleartextkeyset"
@@ -46,7 +47,7 @@ const (
 	horizonImageRegistry   = "quay.io/evertrust"
 	horizonImageName       = "horizon"
 	horizonImageTagEnv     = "HORIZON_IMAGE_TAG"
-	defaultHorizonImageTag = "2.8.0"
+	defaultHorizonImageTag = "2.10.7"
 	horizonLicensePath     = "test/assets/horizon.lic"
 	horizonAdminPassword   = "$6$FgPGge6KVdI9E901$SA1x89egpoUqYqRnqN1wZzMyg3/HcoylrOxpj4oyYxxO82AxH0Cn8Cx8UENUmZbc6MmVjOx8jof/W2e.eEeYn." //nolint:lll
 )
@@ -415,4 +416,57 @@ func UncommentCode(filename, target, prefix string) error {
 	}
 
 	return nil
+}
+
+// HorizonVersionAtLeast tells whether the Horizon under test is major.minor or newer. A tag
+// without two leading integers, like "latest", counts as newer.
+func HorizonVersionAtLeast(major, minor int) bool {
+	var tagMajor, tagMinor int
+	if _, err := fmt.Sscanf(HorizonImageTag(), "%d.%d", &tagMajor, &tagMinor); err != nil {
+		return true
+	}
+	return tagMajor > major || (tagMajor == major && tagMinor >= minor)
+}
+
+// ClusterJWKS returns the JSON Web Key Set the cluster signs service account tokens with.
+func ClusterJWKS() (string, error) {
+	cmd := exec.Command("kubectl", "get", "--raw", "/openid/v1/jwks")
+	return Run(cmd)
+}
+
+// HorizonAPI calls the Horizon REST API as administrator. Horizon is only reachable inside the
+// cluster, so the call goes through a one-shot curl pod in the Horizon namespace. An empty body
+// sends no payload. A non-2xx status makes the call fail.
+func HorizonAPI(method, path, body string) (string, error) {
+	podName := fmt.Sprintf("horizon-api-%d", time.Now().UnixNano())
+	curlArgs := []string{
+		"curl", "-sS", "--fail-with-body", "-X", method,
+		"-H", "X-API-ID: administrator",
+		"-H", "X-API-KEY: horizon",
+		"-H", "Accept: application/json",
+		"-H", "Content-Type: application/json",
+	}
+	if body != "" {
+		curlArgs = append(curlArgs, "-d", "@-")
+	}
+	curlArgs = append(curlArgs, "http://horizon.horizon.svc.cluster.local:9000"+path)
+
+	args := append([]string{
+		"run", podName, "--rm", "-i", "--restart=Never", "--quiet",
+		"--namespace", horizonNamespace,
+		"--image=curlimages/curl:latest",
+		"--command", "--",
+	}, curlArgs...)
+	cmd := exec.Command("kubectl", args...)
+	cmd.Stdin = strings.NewReader(body)
+	return Run(cmd)
+}
+
+// ApplyManifestContent pipes a manifest into kubectl apply.
+func ApplyManifestContent(manifest string) {
+	_, _ = fmt.Fprintf(GinkgoWriter, "applying manifest:\n%s\n", manifest)
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	_, err := Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to apply manifest")
 }

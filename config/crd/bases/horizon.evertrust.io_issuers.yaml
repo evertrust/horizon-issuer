@@ -24,6 +24,9 @@ spec:
     - jsonPath: .spec.authSecretName
       name: Secret
       type: string
+    - jsonPath: .spec.serviceAccount.name
+      name: Service Account
+      type: string
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
       type: string
@@ -54,11 +57,14 @@ spec:
             properties:
               authSecretName:
                 description: |-
-                  A reference to a Secret in the same namespace as the referent. If the
-                  referent is a ClusterIssuer, the reference instead refers to the resource
-                  with the given name in the configured 'cluster resource namespace', which
-                  is set as a flag on the controller component (and defaults to the
-                  namespace that the controller runs in).
+                  AuthSecretName is a reference to a Secret in the same namespace as the
+                  referent holding static Horizon credentials (either an Opaque secret with
+                  'username' and 'password' keys, or a TLS secret with a client
+                  certificate). If the referent is a ClusterIssuer, the reference instead
+                  refers to the resource with the given name in the configured 'cluster
+                  resource namespace', which is set as a flag on the controller component
+                  (and defaults to the namespace that the controller runs in).
+                  Mutually exclusive with serviceAccount.
                 type: string
               caBundle:
                 description: |-
@@ -140,6 +146,53 @@ spec:
                   RevokeCertificates controls whether this issuer should revoke certificates
                   that have been issued through it when their Kubernetes object is deleted.
                 type: boolean
+              serviceAccount:
+                description: |-
+                  ServiceAccount configures authentication against Horizon using a JWKS
+                  service account: a short-lived JWT issued by the Kubernetes cluster is
+                  presented to Horizon on every request, removing the need for a static
+                  secret. Mutually exclusive with authSecretName.
+                properties:
+                  name:
+                    description: |-
+                      Name is the name of the service account declared in Horizon. It is sent
+                      to Horizon in the X-API-SVA header.
+                    minLength: 1
+                    type: string
+                  serviceAccountRef:
+                    description: |-
+                      ServiceAccountRef references the Kubernetes ServiceAccount for which the
+                      controller requests a short-lived token through the TokenRequest API and
+                      presents it to Horizon. For an Issuer, the ServiceAccount must live in
+                      the same namespace as the Issuer. For a ClusterIssuer, it must live in
+                      the configured 'cluster resource namespace'.
+                    properties:
+                      audiences:
+                        description: |-
+                          Audiences to request for the token. Defaults to the Horizon URL, so the
+                          issued token is bound to this Horizon instance only.
+                        items:
+                          type: string
+                        type: array
+                      expirationSeconds:
+                        default: 600
+                        description: |-
+                          ExpirationSeconds is the requested lifetime of the token. The Kubernetes
+                          API server enforces a minimum of 10 minutes.
+                        format: int64
+                        minimum: 600
+                        type: integer
+                      name:
+                        description: Name of the Kubernetes ServiceAccount.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - name
+                - serviceAccountRef
+                type: object
               skipTLSVerify:
                 default: false
                 description: |-
@@ -152,10 +205,12 @@ spec:
                   for instance: "https://horizon.yourcompany.com".
                 type: string
             required:
-            - authSecretName
             - profile
             - url
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of authSecretName or serviceAccount must be set
+              rule: has(self.authSecretName) != has(self.serviceAccount)
           status:
             description: status defines the observed state of Issuer
             properties:

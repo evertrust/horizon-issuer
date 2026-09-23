@@ -21,6 +21,7 @@ import (
 )
 
 // IssuerSpec defines the desired state of Issuer
+// +kubebuilder:validation:XValidation:rule="has(self.authSecretName) != has(self.serviceAccount)",message="exactly one of authSecretName or serviceAccount must be set"
 type IssuerSpec struct {
 	// URL is the base URL of your Horizon instance,
 	// for instance: "https://horizon.yourcompany.com".
@@ -33,12 +34,23 @@ type IssuerSpec struct {
 	// authenticated principal should have rights over this Profile.
 	Profile string `json:"profile"`
 
-	// A reference to a Secret in the same namespace as the referent. If the
-	// referent is a ClusterIssuer, the reference instead refers to the resource
-	// with the given name in the configured 'cluster resource namespace', which
-	// is set as a flag on the controller component (and defaults to the
-	// namespace that the controller runs in).
-	AuthSecretName string `json:"authSecretName"`
+	// AuthSecretName is a reference to a Secret in the same namespace as the
+	// referent holding static Horizon credentials (either an Opaque secret with
+	// 'username' and 'password' keys, or a TLS secret with a client
+	// certificate). If the referent is a ClusterIssuer, the reference instead
+	// refers to the resource with the given name in the configured 'cluster
+	// resource namespace', which is set as a flag on the controller component
+	// (and defaults to the namespace that the controller runs in).
+	// Mutually exclusive with serviceAccount.
+	// +optional
+	AuthSecretName string `json:"authSecretName,omitempty"`
+
+	// ServiceAccount configures authentication against Horizon using a JWKS
+	// service account: a short-lived JWT issued by the Kubernetes cluster is
+	// presented to Horizon on every request, removing the need for a static
+	// secret. Mutually exclusive with authSecretName.
+	// +optional
+	ServiceAccount *IssuerServiceAccount `json:"serviceAccount,omitempty"`
 
 	// CaBundle contains the CA bundle required to
 	// trust the Horizon endpoint certificate
@@ -70,6 +82,41 @@ type IssuerSpec struct {
 	// DnsChecker indicates that the issuer should
 	// validate that the DNS record associated with a certificate
 	DnsChecker *IssuerDnsChecker `json:"dnsChecker,omitempty"`
+}
+
+// IssuerServiceAccount configures JWKS service account authentication.
+type IssuerServiceAccount struct {
+	// Name is the name of the service account declared in Horizon. It is sent
+	// to Horizon in the X-API-SVA header.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// ServiceAccountRef references the Kubernetes ServiceAccount for which the
+	// controller requests a short-lived token through the TokenRequest API and
+	// presents it to Horizon. For an Issuer, the ServiceAccount must live in
+	// the same namespace as the Issuer. For a ClusterIssuer, it must live in
+	// the configured 'cluster resource namespace'.
+	ServiceAccountRef ServiceAccountRef `json:"serviceAccountRef"`
+}
+
+// ServiceAccountRef references a Kubernetes ServiceAccount whose token is
+// requested through the TokenRequest API.
+type ServiceAccountRef struct {
+	// Name of the Kubernetes ServiceAccount.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Audiences to request for the token. Defaults to the Horizon URL, so the
+	// issued token is bound to this Horizon instance only.
+	// +optional
+	Audiences []string `json:"audiences,omitempty"`
+
+	// ExpirationSeconds is the requested lifetime of the token. The Kubernetes
+	// API server enforces a minimum of 10 minutes.
+	// +kubebuilder:validation:Minimum=600
+	// +kubebuilder:default:=600
+	// +optional
+	ExpirationSeconds *int64 `json:"expirationSeconds,omitempty"`
 }
 
 type IssuerTemplate struct {
@@ -120,6 +167,7 @@ type IssuerStatus struct {
 // +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
 // +kubebuilder:printcolumn:name="Horizon URL",type=string,JSONPath=`.spec.url`
 // +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.authSecretName`
+// +kubebuilder:printcolumn:name="Service Account",type=string,JSONPath=`.spec.serviceAccount.name`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].status`
 
 // Issuer is the Schema for the issuers API

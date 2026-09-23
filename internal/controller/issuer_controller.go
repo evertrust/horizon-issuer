@@ -25,9 +25,7 @@ import (
 	horizonapi "github.com/evertrust/horizon-issuer/api/v1beta1"
 	horizonissuer "github.com/evertrust/horizon-issuer/internal/issuer/horizon"
 	issuerutil "github.com/evertrust/horizon-issuer/internal/issuer/util"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -113,32 +111,29 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 		return ctrl.Result{}, nil
 	}
 
-	secretName := types.NamespacedName{
-		Name: issuerSpec.AuthSecretName,
-	}
-
+	var resourceNamespace string
 	switch issuer.(type) {
 	case *horizonapi.Issuer:
-		secretName.Namespace = req.Namespace
+		resourceNamespace = req.Namespace
 	case *horizonapi.ClusterIssuer:
-		secretName.Namespace = r.ClusterResourceNamespace
+		resourceNamespace = r.ClusterResourceNamespace
 	default:
 		log.Error(fmt.Errorf("unexpected issuer type: %t", issuer), "Not retrying.")
 		return ctrl.Result{}, nil
 	}
 
-	var secret corev1.Secret
-	if err := r.Get(ctx, secretName, &secret); err != nil {
-		return ctrl.Result{}, fmt.Errorf("%w, secret name: %s, reason: %v", errGetAuthSecret, secretName, err)
+	creds, err := credentialsFromIssuer(ctx, r.Client, issuerSpec, resourceNamespace)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	log.V(1).Info("Starting health check")
-	checker, err := r.HealthCheckerBuilder(log, issuerSpec, secret)
+	checker, err := r.HealthCheckerBuilder(log, issuerSpec, creds)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerBuilder, err)
 	}
 
-	if err := checker.Check(); err != nil {
+	if err := checker.Check(ctx); err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errHealthCheckerCheck, err)
 	}
 

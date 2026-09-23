@@ -36,7 +36,7 @@ func newIssuerForServer(t *testing.T, handler http.Handler) (*HorizonIssuer, v1b
 	config := horizon.NewConfiguration()
 	config.Servers = horizon.ServerConfigurations{{URL: server.URL}}
 	config.Scheme = ""
-	return &HorizonIssuer{Client: *horizon.NewAPIClient(config)}, v1beta1.IssuerSpec{URL: server.URL, Profile: "issuer"}
+	return &HorizonIssuer{Client: *horizon.NewAPIClient(config)}, v1beta1.IssuerSpec{URL: server.URL, Profile: testProfile}
 }
 
 func certificateRequestForRenew() *cmapi.CertificateRequest {

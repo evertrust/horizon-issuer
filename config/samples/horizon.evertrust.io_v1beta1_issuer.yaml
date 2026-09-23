@@ -6,4 +6,15 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: issuer-sample
 spec:
-  # TODO(user): Add fields here
+  url: https://horizon.yourcompany.com
+  profile: kubernetes
+  # Authenticate with a JWKS service account declared in Horizon. The
+  # controller requests a short-lived token for the referenced Kubernetes
+  # ServiceAccount (in this namespace) and sends it on every call.
+  serviceAccount:
+    name: horizon-issuer
+    serviceAccountRef:
+      name: horizon-issuer
+      # Optional. Defaults to the Horizon URL.
+      # audiences:
+      #   - https://horizon.yourcompany.com
