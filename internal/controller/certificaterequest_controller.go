@@ -254,10 +254,15 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}()
 
-	// If CertificateRequest has been denied, mark the CertificateRequest as
-	// Ready=Denied and set FailureTime if not already.
+	// An approver on the cluster denied the request: mark it Ready=False/Denied with a failure
+	// time. If it had already been submitted, the Horizon side is canceled first; when that fails
+	// the reconcile returns an error so that the cancel is retried before the request is closed.
 	if cmutil.CertificateRequestIsDenied(&certificateRequest) {
-		log.Info("CertificateRequest has been denied yet. Marking as failed.")
+		log.Info("CertificateRequest has been denied. Marking as failed.")
+
+		if err := r.Issuer.CancelRequest(ctx, &certificateRequest); err != nil {
+			return ctrl.Result{}, err
+		}
 
 		if certificateRequest.Status.FailureTime == nil {
 			nowTime := metav1.NewTime(r.Clock.Now())
@@ -393,12 +398,9 @@ func applyManagedFinalizer(latest, desired *cmapi.CertificateRequest) {
 	}
 }
 
+// copyManagedStatusFields copies the status fields this controller owns onto the latest version of
+// the object. It leaves Approved and Denied alone: the cluster's approval policies own those.
 func copyManagedStatusFields(latest, desired *cmapi.CertificateRequest) {
-	if approved := findConditionByType(desired.Status.Conditions, cmapi.CertificateRequestConditionApproved); approved != nil &&
-		!cmutil.CertificateRequestIsApproved(latest) && !cmutil.CertificateRequestIsDenied(latest) {
-		cmutil.SetCertificateRequestCondition(latest, approved.Type, approved.Status, approved.Reason, approved.Message)
-	}
-
 	for _, conditionType := range []cmapi.CertificateRequestConditionType{
 		cmapi.CertificateRequestConditionReady,
 		cmapi.CertificateRequestConditionInvalidRequest,

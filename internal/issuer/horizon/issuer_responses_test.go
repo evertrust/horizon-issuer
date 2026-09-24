@@ -70,6 +70,9 @@ func TestSubmitRenewRequestStoresRequestId(t *testing.T) {
 	if got := certificateRequest.Annotations[RequestIdAnnotation]; got != "renew-request-id" {
 		t.Errorf("request-id annotation = %q, want %q", got, "renew-request-id")
 	}
+	if got := certificateRequest.Annotations[RequestStatusAnnotation]; got != string(models.REQUESTSTATUS_PENDING) {
+		t.Errorf("request-status annotation = %q, want %q", got, models.REQUESTSTATUS_PENDING)
+	}
 	ready := cmutil.GetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady)
 	if ready == nil || ready.Status != cmmeta.ConditionFalse || ready.Reason != cmapi.CertificateRequestReasonPending {
 		t.Errorf("Ready condition = %+v, want False/Pending", ready)
@@ -84,7 +87,7 @@ func TestUpdateRequestHandlesRenewWorkflow(t *testing.T) {
 		wantReq    bool
 	}{
 		{name: "pending renew request is requeued", response: renewPendingResponse, wantReq: true},
-		{name: "denied renew request is marked denied", response: renewDeniedResponse, wantDenied: true},
+		{name: "denied renew request is marked failed", response: renewDeniedResponse, wantDenied: true},
 	}
 
 	for _, tc := range tests {
@@ -108,8 +111,11 @@ func TestUpdateRequestHandlesRenewWorkflow(t *testing.T) {
 			}
 			if tc.wantDenied {
 				ready := cmutil.GetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady)
-				if ready == nil || ready.Status != cmmeta.ConditionFalse || ready.Reason != cmapi.CertificateRequestReasonDenied {
-					t.Errorf("expected the request to be denied, conditions = %+v", certificateRequest.Status.Conditions)
+				if ready == nil || ready.Status != cmmeta.ConditionFalse || ready.Reason != cmapi.CertificateRequestReasonFailed {
+					t.Errorf("expected the request to be failed, conditions = %+v", certificateRequest.Status.Conditions)
+				}
+				if certificateRequest.Status.FailureTime == nil {
+					t.Error("expected a failure time on the denied request")
 				}
 				if got := certificateRequest.Annotations[RequestStatusAnnotation]; got != string(models.REQUESTSTATUS_DENIED) {
 					t.Errorf("unexpected %s annotation: got %q", RequestStatusAnnotation, got)

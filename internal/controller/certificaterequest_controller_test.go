@@ -200,22 +200,23 @@ var _ = Describe("CertificateRequestReconciler", func() {
 		Expect(updates).To(Equal(1))
 	})
 
-	It("should reflect the Horizon approval when no approver has decided yet", func() {
+	It("should leave the Approved condition to the cluster's approval policies", func() {
+		By("not approving a request nobody has decided on")
 		latest := certificateRequestForTests("ns-f", "req", "issuer-f", false)
 		desired := latest.DeepCopy()
-		cmutil.SetCertificateRequestCondition(desired, cmapi.CertificateRequestConditionApproved, cmmeta.ConditionTrue,
-			"horizon.evertrust.io", "Request approved on Horizon")
+		cmutil.SetCertificateRequestCondition(desired, cmapi.CertificateRequestConditionReady, cmmeta.ConditionTrue,
+			cmapi.CertificateRequestReasonIssued, "Signed")
 
 		copyManagedStatusFields(latest, desired)
 
-		approved := cmutil.GetCertificateRequestCondition(latest, cmapi.CertificateRequestConditionApproved)
-		Expect(approved).NotTo(BeNil())
-		Expect(approved.Reason).To(Equal("horizon.evertrust.io"))
-	})
+		Expect(cmutil.GetCertificateRequestCondition(latest, cmapi.CertificateRequestConditionApproved)).To(BeNil())
+		ready := cmutil.GetCertificateRequestCondition(latest, cmapi.CertificateRequestConditionReady)
+		Expect(ready).NotTo(BeNil())
+		Expect(ready.Reason).To(Equal(cmapi.CertificateRequestReasonIssued))
 
-	It("should not modify an approval set by another approver", func() {
-		latest := certificateRequestForTests("ns-g", "req", "issuer-g", true)
-		desired := latest.DeepCopy()
+		By("keeping an approval set by another approver as is")
+		latest = certificateRequestForTests("ns-g", "req", "issuer-g", true)
+		desired = latest.DeepCopy()
 		cmutil.SetCertificateRequestCondition(desired, cmapi.CertificateRequestConditionApproved, cmmeta.ConditionTrue,
 			"horizon.evertrust.io", "Request approved on Horizon")
 
