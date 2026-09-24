@@ -13,12 +13,14 @@ import (
 	"github.com/evertrust/horizon-go/v2/models"
 	"github.com/evertrust/horizon-go/v2/utils"
 	"github.com/evertrust/horizon-issuer/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 const IssuerNamespace = "horizon.evertrust.io"
 const (
 	RequestIdAnnotation         = IssuerNamespace + "/request-id"
+	RequestStatusAnnotation     = IssuerNamespace + "/request-status"
 	CertificateIdAnnotation     = IssuerNamespace + "/certificate-id"
 	LastCertificateIdAnnotation = IssuerNamespace + "/last-certificate-id"
 	OwnerAnnotation             = IssuerNamespace + "/owner"
@@ -34,6 +36,7 @@ type HorizonIssuer struct {
 type horizonRequest interface {
 	GetId() string
 	GetStatus() models.RequestStatus
+	GetWorkflow() string
 	GetCertificate() models.Certificate
 }
 
@@ -117,12 +120,17 @@ func (r *HorizonIssuer) SubmitEnrollRequest(ctx context.Context, issuer v1beta1.
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+
 	// Update the request with the Horizon request ID
 	submitted, err := requestFromSubmitResponse(request)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	certificateRequest.Annotations[RequestIdAnnotation] = submitted.GetId()
+	certificateRequest.Annotations[RequestStatusAnnotation] = string(models.REQUESTSTATUS_PENDING)
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -155,12 +163,17 @@ func (r *HorizonIssuer) SubmitRenewRequest(ctx context.Context, issuer v1beta1.I
 		return r.handleFailedRequest(certificateRequest, err)
 	}
 
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+
 	// Update the request with the Horizon request ID
 	submitted, err := requestFromSubmitResponse(request)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	certificateRequest.Annotations[RequestIdAnnotation] = submitted.GetId()
+	certificateRequest.Annotations[RequestStatusAnnotation] = string(models.REQUESTSTATUS_PENDING)
 
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
@@ -193,12 +206,50 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 	case models.REQUESTSTATUS_COMPLETED:
 		return r.handleCompletedRequest(fetched, certificateRequest)
 	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED:
+		setRequestStatusAnnotation(certificateRequest, string(fetched.GetStatus()))
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
-		return r.handleDeniedRequest(certificateRequest)
+		return r.handleDeniedRequest(certificateRequest, fetched.GetStatus())
 	}
 
 	return ctrl.Result{}, errors.New("invalid request status " + string(fetched.GetStatus()))
+}
+
+func (r *HorizonIssuer) CancelRequest(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
+	logger := ctrl.LoggerFrom(ctx)
+
+	requestId, ok := certificateRequest.Annotations[RequestIdAnnotation]
+	if !ok {
+		return nil
+	}
+
+	request, _, err := r.Client.RequestAPI.RequestGet(ctx, requestId).Execute()
+	if err != nil {
+		return fmt.Errorf("%w: %v", errors.New("unable to fetch request from Horizon"), err)
+	}
+	fetched, err := requestFromGetResponse(request)
+	if err != nil {
+		return err
+	}
+	if fetched.GetStatus() != models.REQUESTSTATUS_PENDING {
+		logger.Info(fmt.Sprintf("Request %s is %s on Horizon, nothing to cancel", requestId, fetched.GetStatus()))
+		return nil
+	}
+
+	logger.Info(fmt.Sprintf("Canceling request %s on Horizon", requestId))
+	_, _, err = r.Client.RequestAPI.RequestCancel(ctx).
+		RequestCancelRequest(models.RequestCancelRequest{
+			Id:       requestId,
+			Module:   models.MODULE_WEBRA,
+			Workflow: models.Workflow(fetched.GetWorkflow()),
+		}).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("%w: %v", errors.New("unable to cancel request on Horizon"), formatAPIError(err))
+	}
+	setRequestStatusAnnotation(certificateRequest, string(models.REQUESTSTATUS_CANCELED))
+
+	return nil
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
@@ -217,7 +268,7 @@ func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateReques
 }
 
 func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
-	// We requeue the request since it still needs to be approved
+	// Horizon is still working on this request, so we come back later
 	return ctrl.Result{RequeueAfter: time.Minute / 4}, nil
 }
 
@@ -242,27 +293,31 @@ type apiError struct {
 func (e *apiError) Error() string { return e.msg }
 func (e *apiError) Unwrap() error { return e.inner }
 
-func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+// handleDeniedRequest marks the CertificateRequest as failed when Horizon denied or canceled the
+// request. cert-manager only treats two things as a failed issuance: a Denied condition, which
+// belongs to approvers, and a Ready condition with the Failed reason. So this sets the latter,
+// with a failure time, and the parent Certificate fails and retries with backoff as it did before.
+func (r *HorizonIssuer) handleDeniedRequest(certificateRequest *cmapi.CertificateRequest, status models.RequestStatus) (result ctrl.Result, err error) {
+	setRequestStatusAnnotation(certificateRequest, string(status))
+
+	if certificateRequest.Status.FailureTime == nil {
+		now := metav1.Now()
+		certificateRequest.Status.FailureTime = &now
+	}
 	cmutil.SetCertificateRequestCondition(
 		certificateRequest,
-		cmapi.CertificateRequestConditionDenied,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
-		"Request denied on Horizon",
+		cmapi.CertificateRequestConditionReady,
+		cmmeta.ConditionFalse,
+		cmapi.CertificateRequestReasonFailed,
+		fmt.Sprintf("Request %s on Horizon", status),
 	)
 
 	return ctrl.Result{}, nil
 }
 
+// handleCompletedRequest stores the issued certificate on the CertificateRequest and marks it Ready.
+// It does not set Approved: that is up to whatever approval policy the cluster runs.
 func (r *HorizonIssuer) handleCompletedRequest(request horizonRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
-	cmutil.SetCertificateRequestCondition(
-		certificateRequest,
-		cmapi.CertificateRequestConditionApproved,
-		cmmeta.ConditionTrue,
-		"horizon.evertrust.io",
-		"Request approved on Horizon",
-	)
-
 	resp, _, err := r.Client.Rfc5280API.Rfc5280TcPem(context.Background(), request.GetCertificate().Certificate).Order("ltr").Execute()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("%w: %v", errors.New("unable to build a trust chain for certificate"), err)
@@ -274,7 +329,11 @@ func (r *HorizonIssuer) handleCompletedRequest(request horizonRequest, certifica
 			certificateRequest.Status.CA = []byte(ca)
 		}
 		if certificate != "" {
+			if certificateRequest.Annotations == nil {
+				certificateRequest.Annotations = make(map[string]string)
+			}
 			issued := request.GetCertificate()
+			certificateRequest.Annotations[RequestStatusAnnotation] = string(models.REQUESTSTATUS_COMPLETED)
 			certificateRequest.Annotations[CertificateIdAnnotation] = issued.GetId()
 			certificateRequest.Annotations[OwnerAnnotation] = issued.GetOwner()
 			certificateRequest.Annotations[TeamAnnotation] = issued.GetTeam()
@@ -297,4 +356,11 @@ func (r *HorizonIssuer) handleCompletedRequest(request horizonRequest, certifica
 
 	// We don't requeue this request since it is completed
 	return ctrl.Result{}, nil
+}
+
+func setRequestStatusAnnotation(certificateRequest *cmapi.CertificateRequest, status string) {
+	if certificateRequest.Annotations == nil {
+		certificateRequest.Annotations = make(map[string]string)
+	}
+	certificateRequest.Annotations[RequestStatusAnnotation] = status
 }

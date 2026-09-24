@@ -20,6 +20,8 @@ import (
 // picks the variant from the "workflow" field, so a renew workflow must not be handled as
 // an enroll one (regression for the nil pointer dereference on renewal with horizon-go >= 2.10).
 const (
+	renewRequestId = "renew-request-id"
+
 	renewSubmitResponse = `{"module":"webra","workflow":"renew","_id":"renew-request-id","holderId":"holder",
 		"lastModificationDate":1,"profile":"issuer","registrationDate":1,"removeAt":1,"status":"pending"}`
 	renewPendingResponse = `{"module":"webra","workflow":"renew","_id":"renew-request-id","holderId":"holder",
@@ -44,7 +46,7 @@ func certificateRequestForRenew() *cmapi.CertificateRequest {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "to-renew",
 			Namespace:   "default",
-			Annotations: map[string]string{RequestIdAnnotation: "renew-request-id"},
+			Annotations: map[string]string{RequestIdAnnotation: renewRequestId},
 		},
 		Spec: cmapi.CertificateRequestSpec{Request: []byte("dummy-csr")},
 	}
@@ -67,8 +69,11 @@ func TestSubmitRenewRequestStoresRequestId(t *testing.T) {
 	if _, err := issuer.SubmitRenewRequest(context.Background(), spec, certificateRequest, "last-certificate-id"); err != nil {
 		t.Fatalf("SubmitRenewRequest() error = %v", err)
 	}
-	if got := certificateRequest.Annotations[RequestIdAnnotation]; got != "renew-request-id" {
-		t.Errorf("request-id annotation = %q, want %q", got, "renew-request-id")
+	if got := certificateRequest.Annotations[RequestIdAnnotation]; got != renewRequestId {
+		t.Errorf("request-id annotation = %q, want %q", got, renewRequestId)
+	}
+	if got := certificateRequest.Annotations[RequestStatusAnnotation]; got != string(models.REQUESTSTATUS_PENDING) {
+		t.Errorf("request-status annotation = %q, want %q", got, models.REQUESTSTATUS_PENDING)
 	}
 	ready := cmutil.GetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady)
 	if ready == nil || ready.Status != cmmeta.ConditionFalse || ready.Reason != cmapi.CertificateRequestReasonPending {
@@ -84,13 +89,13 @@ func TestUpdateRequestHandlesRenewWorkflow(t *testing.T) {
 		wantReq    bool
 	}{
 		{name: "pending renew request is requeued", response: renewPendingResponse, wantReq: true},
-		{name: "denied renew request is marked denied", response: renewDeniedResponse, wantDenied: true},
+		{name: "denied renew request is marked failed", response: renewDeniedResponse, wantDenied: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			issuer, _ := newIssuerForServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/requests/renew-request-id" {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/requests/"+renewRequestId {
 					http.NotFound(w, r)
 					return
 				}
@@ -106,8 +111,17 @@ func TestUpdateRequestHandlesRenewWorkflow(t *testing.T) {
 			if tc.wantReq && result.RequeueAfter == 0 {
 				t.Errorf("expected the pending request to be requeued, got %+v", result)
 			}
-			if tc.wantDenied && !cmutil.CertificateRequestIsDenied(certificateRequest) {
-				t.Errorf("expected the request to be denied, conditions = %+v", certificateRequest.Status.Conditions)
+			if tc.wantDenied {
+				ready := cmutil.GetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady)
+				if ready == nil || ready.Status != cmmeta.ConditionFalse || ready.Reason != cmapi.CertificateRequestReasonFailed {
+					t.Errorf("expected the request to be failed, conditions = %+v", certificateRequest.Status.Conditions)
+				}
+				if certificateRequest.Status.FailureTime == nil {
+					t.Error("expected a failure time on the denied request")
+				}
+				if got := certificateRequest.Annotations[RequestStatusAnnotation]; got != string(models.REQUESTSTATUS_DENIED) {
+					t.Errorf("unexpected %s annotation: got %q", RequestStatusAnnotation, got)
+				}
 			}
 		})
 	}

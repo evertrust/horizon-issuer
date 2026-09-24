@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,6 +50,14 @@ const metricsServiceName = "horizon-issuer-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "horizon-issuer-metrics-binding"
+
+// Annotations horizon-issuer writes on a CertificateRequest, and the Horizon status of a request
+// whose certificate has been issued.
+const (
+	requestIdAnnotation     = "horizon.evertrust.io/request-id"
+	requestStatusAnnotation = "horizon.evertrust.io/request-status"
+	requestStatusCompleted  = "completed"
+)
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -435,6 +444,108 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
 		})
 
+		// A request Horizon refuses has to fail the parent Certificate the way it did in 1.1.x, when
+		// the issuer set a Denied condition. cert-manager only fails a Certificate on a Denied
+		// condition or on a Ready=False/Failed request, so this is what the issuer must produce.
+		// The request stays pending because the account enrolling it only has the "request enroll"
+		// permission on the profile; the administrator then denies it.
+		It("fails the certificate when Horizon denies the request", func() {
+			const certificateName = "certificate-denied-on-horizon"
+			const requestName = certificateName + "-1"
+
+			By("creating a Horizon account that can only request enrollments, not perform them")
+			createRequestOnlyHorizonAccount()
+
+			By("creating a clusterissuer that enrolls with that account")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-approval.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-approval", ""), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("submitting a request that stays pending on Horizon")
+			utils.ApplyManifest("test/assets/manifests/certificate-denied-on-horizon.yml")
+			var horizonRequestId string
+			Eventually(func(g Gomega) {
+				status, err := utils.CertificateRequestJSONPath(requestName, "{.metadata.annotations.horizon\\.evertrust\\.io/request-status}")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status).To(Equal("pending"))
+				horizonRequestId, err = utils.CertificateRequestJSONPath(requestName, "{.metadata.annotations.horizon\\.evertrust\\.io/request-id}")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(horizonRequestId).NotTo(BeEmpty())
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("denying the request on Horizon")
+			denyHorizonRequest(horizonRequestId)
+
+			By("failing the request with the signals cert-manager reacts to")
+			Eventually(utils.WaitForCertificateRequestFailed(requestName), 3*time.Minute, time.Second).Should(Succeed())
+			message, err := utils.CertificateRequestJSONPath(requestName, "{.status.conditions[?(@.type=='Ready')].message}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(message).To(Equal("Request denied on Horizon"))
+			failureTime, err := utils.CertificateRequestJSONPath(requestName, "{.status.failureTime}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(failureTime).NotTo(BeEmpty())
+			utils.ExpectCertificateRequestAnnotations(requestName, map[string]string{
+				requestIdAnnotation:     horizonRequestId,
+				requestStatusAnnotation: "denied",
+			})
+
+			By("leaving the approval conditions alone")
+			approvalConditions, err := utils.CertificateRequestJSONPath(requestName, "{.status.conditions[?(@.type=='Approved')].status}{.status.conditions[?(@.type=='Denied')].status}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(approvalConditions).To(BeEmpty(), "the issuer must set neither Approved nor Denied")
+
+			By("letting cert-manager fail the certificate and count the attempt")
+			Eventually(func(g Gomega) {
+				status, err := utils.CertificateJSONPath(certificateName, "{.status.conditions[?(@.type=='Issuing')].status}")
+				g.Expect(err).NotTo(HaveOccurred())
+				reason, err := utils.CertificateJSONPath(certificateName, "{.status.conditions[?(@.type=='Issuing')].reason}")
+				g.Expect(err).NotTo(HaveOccurred())
+				attempts, err := utils.CertificateJSONPath(certificateName, "{.status.failedIssuanceAttempts}")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status).To(Equal("False"), "Certificate %s Issuing status", certificateName)
+				g.Expect(reason).To(Equal("Failed"), "Certificate %s Issuing reason", certificateName)
+				g.Expect(attempts).To(Equal("1"), "Certificate %s failed issuance attempts", certificateName)
+			}, 3*time.Minute, time.Second).Should(Succeed())
+		})
+
+		// An approver on the cluster can deny a request after horizon-issuer submitted it. Horizon
+		// validators must not be left with a request nobody waits for, so the issuer cancels it.
+		It("cancels the Horizon request when an approver denies it on the cluster", func() {
+			const certificateName = "certificate-denied-on-cluster"
+			const requestName = certificateName + "-1"
+
+			By("submitting a request that stays pending on Horizon")
+			createRequestOnlyHorizonAccount()
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-approval.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-approval", ""), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ApplyManifest("test/assets/manifests/certificate-denied-on-cluster.yml")
+			var horizonRequestId string
+			Eventually(func(g Gomega) {
+				status, err := utils.CertificateRequestJSONPath(requestName, "{.metadata.annotations.horizon\\.evertrust\\.io/request-status}")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status).To(Equal("pending"))
+				horizonRequestId, err = utils.CertificateRequestJSONPath(requestName, "{.metadata.annotations.horizon\\.evertrust\\.io/request-id}")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(horizonRequestId).NotTo(BeEmpty())
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("denying the request on the cluster, as an approver would")
+			patch := `{"status":{"conditions":[{"type":"Denied","status":"True","reason":"policy.cert-manager.io","message":"denied by an approver on the cluster"}]}}`
+			cmd := exec.Command("kubectl", "patch", "certificaterequests/"+requestName,
+				"--type=merge", "--subresource=status", "-p", patch)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to deny the request on the cluster")
+
+			By("closing the request and canceling it on Horizon")
+			Eventually(utils.WaitForCertificateRequestDenied(requestName), 3*time.Minute, time.Second).Should(Succeed())
+			utils.ExpectCertificateRequestAnnotations(requestName, map[string]string{
+				requestIdAnnotation:     horizonRequestId,
+				requestStatusAnnotation: "canceled",
+			})
+			output, err := horizonAPI(http.MethodGet, "/api/v1/requests/"+horizonRequestId, "")
+			Expect(err).NotTo(HaveOccurred(), "Failed to read request %s on Horizon: %s", horizonRequestId, output)
+			Expect(output).To(ContainSubstring(`"status":"canceled"`), "the request should be canceled on Horizon")
+		})
+
 		// TODO: currently not implemented
 		// It("can update a certificate", func() {
 		// 	By("enrolling an initial certificate")
@@ -452,6 +563,136 @@ var _ = Describe("Manager", Ordered, func() {
 		// 		"horizon.evertrust.io/labels.environment": "prod",
 		// 	})
 		// })
+
+		Context("with cert-manager's approver allowed to approve Horizon requests", Ordered, func() {
+			BeforeAll(func() {
+				By("allowing cert-manager's approver to approve Horizon signers")
+				utils.ApplyManifest("test/assets/manifests/cert-manager-approver-rbac.yml")
+			})
+
+			AfterAll(func() {
+				By("revoking cert-manager's approver rights on Horizon signers")
+				cmd := exec.Command("kubectl", "delete", "-f", "test/assets/manifests/cert-manager-approver-rbac.yml")
+				_, _ = utils.Run(cmd)
+			})
+
+			It("can issue a certificate approved concurrently by cert-manager", func() {
+				utils.ApplyManifest("test/assets/manifests/certificate-approved-concurrently.yml")
+				Eventually(utils.WaitForCertificateRequestApproved("certificate-approved-concurrently-1"), 3*time.Minute, time.Second).Should(Succeed())
+				Eventually(utils.WaitForCertificateReady("certificate-approved-concurrently"), 3*time.Minute, time.Second).Should(Succeed())
+
+				By("ensuring the request was submitted and completed on Horizon")
+				utils.ExpectCertificateRequestAnnotations("certificate-approved-concurrently-1", map[string]string{
+					requestStatusAnnotation: requestStatusCompleted,
+				})
+			})
+
+			// Regression test for https://github.com/evertrust/horizon-issuer/issues/41: a request
+			// approved by another approver before horizon-issuer processed it must not get stuck.
+			It("converges a request approved by cert-manager before being processed", func() {
+				stopControllerManager()
+
+				By("letting cert-manager approve a request that has not been submitted to Horizon")
+				utils.ApplyManifest("test/assets/manifests/certificate-approved-before-processing.yml")
+				Eventually(utils.WaitForCertificateRequestApproved("certificate-approved-before-processing-1"), 3*time.Minute, time.Second).Should(Succeed())
+				utils.ExpectCertificateRequestApprovedBy("certificate-approved-before-processing-1", "cert-manager.io")
+				output, err := utils.CertificateRequestJSONPath("certificate-approved-before-processing-1",
+					"{.metadata.annotations.horizon\\.evertrust\\.io/request-id}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(output).To(BeEmpty(), "request should not have been submitted to Horizon yet")
+
+				controllerPodName = startControllerManager()
+
+				By("waiting for the already approved request to be issued")
+				Eventually(utils.WaitForCertificateReady("certificate-approved-before-processing"), 3*time.Minute, time.Second).Should(Succeed())
+				utils.ExpectCertificateRequestApprovedBy("certificate-approved-before-processing-1", "cert-manager.io")
+				utils.ExpectCertificateRequestAnnotations("certificate-approved-before-processing-1", map[string]string{
+					requestStatusAnnotation: requestStatusCompleted,
+				})
+			})
+		})
+
+		// Older issuers did not write the request-status annotation and marked a refusal with a
+		// Denied condition. The requests they left behind have to end up in the right state once
+		// the new version takes over. We stop the controller while creating those requests so
+		// that only the version under test ever sees them.
+		Context("after upgrading from a previous version of the issuer", Ordered, func() {
+			const (
+				legacyCertificateName       = "certificate-legacy"
+				legacyCompletedRequest      = "legacy-completed-request"
+				legacyDeniedRequest         = "legacy-denied-request"
+				requestIdAnnotationPath     = "{.metadata.annotations.horizon\\.evertrust\\.io/request-id}"
+				certificateIdAnnotationPath = "{.metadata.annotations.horizon\\.evertrust\\.io/certificate-id}"
+			)
+			var horizonRequestId, horizonCertificateId, csr string
+
+			BeforeAll(func() {
+				By("issuing a certificate with the current version to get a completed Horizon request")
+				utils.ApplyManifest("test/assets/manifests/certificate-legacy.yml")
+				Eventually(utils.WaitForCertificateReady(legacyCertificateName), 3*time.Minute, time.Second).Should(Succeed())
+
+				var err error
+				horizonRequestId, err = utils.CertificateRequestJSONPath(legacyCertificateName+"-1", requestIdAnnotationPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(horizonRequestId).NotTo(BeEmpty())
+				horizonCertificateId, err = utils.CertificateRequestJSONPath(legacyCertificateName+"-1", certificateIdAnnotationPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(horizonCertificateId).NotTo(BeEmpty())
+				csr, err = utils.CertificateRequestJSONPath(legacyCertificateName+"-1", "{.spec.request}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(csr).NotTo(BeEmpty())
+
+				stopControllerManager()
+
+				By("creating requests the way a previous version left them: request-id only, no request-status")
+				utils.ApplyManifestContent(legacyCertificateRequest(legacyCompletedRequest, legacyCertificateName, horizonRequestId, csr))
+				utils.ApplyManifestContent(legacyCertificateRequest(legacyDeniedRequest, legacyCertificateName, horizonRequestId, csr))
+
+				By("marking one of them with the Denied condition a previous version used to set")
+				patch := `{"status":{"conditions":[{"type":"Denied","status":"True","reason":"horizon.evertrust.io","message":"Request denied on Horizon"}]}}`
+				cmd := exec.Command("kubectl", "patch", "certificaterequests/"+legacyDeniedRequest,
+					"--type=merge", "--subresource=status", "-p", patch)
+				_, err = utils.Run(cmd)
+				Expect(err).NotTo(HaveOccurred(), "Failed to set the legacy Denied condition")
+
+				controllerPodName = startControllerManager()
+			})
+
+			It("keeps tracking a request that only carries the request-id annotation", func() {
+				Eventually(utils.WaitForCertificateRequestReady(legacyCompletedRequest), 3*time.Minute, time.Second).Should(Succeed())
+
+				By("backfilling the annotations from the Horizon request")
+				utils.ExpectCertificateRequestAnnotations(legacyCompletedRequest, map[string]string{
+					requestIdAnnotation:                   horizonRequestId,
+					requestStatusAnnotation:               requestStatusCompleted,
+					"horizon.evertrust.io/certificate-id": horizonCertificateId,
+				})
+
+				By("storing the issued certificate without approving the request itself")
+				certificate, err := utils.CertificateRequestJSONPath(legacyCompletedRequest, "{.status.certificate}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(certificate).NotTo(BeEmpty(), "the issued certificate should be stored on the request")
+				approved, err := utils.CertificateRequestJSONPath(legacyCompletedRequest, "{.status.conditions[?(@.type=='Approved')].status}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(approved).To(BeEmpty(), "the issuer must not approve, the cluster's policies do that")
+			})
+
+			It("turns a Denied condition set by a previous version into Ready=False/Denied", func() {
+				Eventually(utils.WaitForCertificateRequestDenied(legacyDeniedRequest), 3*time.Minute, time.Second).Should(Succeed())
+
+				failureTime, err := utils.CertificateRequestJSONPath(legacyDeniedRequest, "{.status.failureTime}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(failureTime).NotTo(BeEmpty(), "a denied request should carry a failure time")
+
+				By("never issuing the certificate although the Horizon request is completed")
+				certificate, err := utils.CertificateRequestJSONPath(legacyDeniedRequest, "{.status.certificate}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(certificate).To(BeEmpty())
+				requestId, err := utils.CertificateRequestJSONPath(legacyDeniedRequest, requestIdAnnotationPath)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(requestId).To(Equal(horizonRequestId), "the request-id annotation must be left untouched")
+			})
+		})
 
 		It("can revoke a certificate", func() {
 			By("creating an issuer that revokes certificates")
@@ -518,6 +759,97 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 	})
 })
+
+// horizonAPI calls the Horizon instance running in the cluster as the administrator and returns
+// the response body. Horizon is only reachable from inside the cluster, so the call goes through a
+// short-lived curl pod. The API-ID and API-KEY headers avoid the CSRF check that cookies trigger.
+func horizonAPI(method, path, body string) (string, error) {
+	args := []string{"run", fmt.Sprintf("horizon-api-%d", time.Now().UnixNano()%1000000),
+		"--rm", "-i", "--restart=Never", "--image=curlimages/curl:latest", "--",
+		"curl", "--silent", "--show-error", "--fail-with-body",
+		"-X", method, "http://horizon.horizon.svc.cluster.local:9000" + path,
+		"-H", "X-API-ID: administrator", "-H", "X-API-KEY: horizon",
+		"-H", "Content-Type: application/json", "-H", "Accept: application/json",
+	}
+	if body != "" {
+		args = append(args, "-d", body)
+	}
+	return utils.Run(exec.Command("kubectl", args...))
+}
+
+// createRequestOnlyHorizonAccount creates the "requester" local account used by
+// clusterissuer-with-approval.yml and grants it the right to request enrollments on the profile,
+// without the right to enroll. Every enrollment it submits therefore waits for an approver.
+// The permissions live on the principal info, which Horizon may or may not have created along
+// with the account, so it is created first and updated if it was already there.
+func createRequestOnlyHorizonAccount() {
+	output, err := horizonAPI(http.MethodPost, "/api/v1/security/identity/locals",
+		`{"identifier":"requester","name":"e2e requester","email":"requester@example.com","password":"Requester-e2e-1!"}`)
+	if err != nil && !strings.Contains(output, "already exists") {
+		Fail(fmt.Sprintf("Failed to create the requester account on Horizon: %v\n%s", err, output))
+	}
+
+	principalInfo := `{"identifier":"requester","enabled":true,"contact":"requester@example.com","permissions":[{"value":"lifecycle:webra:issuer:request_enroll"},{"value":"lifecycle:webra:issuer:search"}]}`
+	output, err = horizonAPI(http.MethodPost, "/api/v1/security/principalinfos", principalInfo)
+	if err != nil && strings.Contains(output, "already exists") {
+		output, err = horizonAPI(http.MethodPut, "/api/v1/security/principalinfos", principalInfo)
+	}
+	Expect(err).NotTo(HaveOccurred(), "Failed to grant the requester its permissions on Horizon: %s", output)
+}
+
+// denyHorizonRequest denies a pending enrollment request on Horizon as the administrator.
+func denyHorizonRequest(requestId string) {
+	output, err := horizonAPI(http.MethodPost, "/api/v1/requests/deny",
+		fmt.Sprintf(`{"_id":%q,"module":"webra","workflow":"enroll","approverComment":"denied by the e2e suite"}`, requestId))
+	Expect(err).NotTo(HaveOccurred(), "Failed to deny request %s on Horizon: %s", requestId, output)
+}
+
+// stopControllerManager scales the controller-manager down and waits for its pod to be gone.
+func stopControllerManager() {
+	By("stopping the controller-manager")
+	cmd := exec.Command("kubectl", "scale", "deployment/horizon-issuer-controller-manager", "-n", namespace, "--replicas=0")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to scale down the controller-manager")
+	cmd = exec.Command("kubectl", "wait", "pods", "-l", "control-plane=controller-manager", "-n", namespace,
+		"--for=delete", "--timeout=2m")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Controller-manager pod still running")
+}
+
+// startControllerManager scales the controller-manager back up and returns the name of its new pod.
+func startControllerManager() string {
+	By("restarting the controller-manager")
+	cmd := exec.Command("kubectl", "scale", "deployment/horizon-issuer-controller-manager", "-n", namespace, "--replicas=1")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to scale up the controller-manager")
+	cmd = exec.Command("kubectl", "rollout", "status", "deployment/horizon-issuer-controller-manager", "-n", namespace, "--timeout=2m")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Controller-manager did not come back up")
+	cmd = exec.Command("kubectl", "get", "pods", "-l", "control-plane=controller-manager", "-n", namespace,
+		"-o", "jsonpath={.items[0].metadata.name}")
+	podName, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	return podName
+}
+
+// legacyCertificateRequest renders a CertificateRequest as a previous version of the issuer
+// left it: bound to its Certificate, carrying the Horizon request-id only.
+func legacyCertificateRequest(name, certificateName, horizonRequestId, csr string) string {
+	return fmt.Sprintf(`apiVersion: cert-manager.io/v1
+kind: CertificateRequest
+metadata:
+  name: %s
+  annotations:
+    cert-manager.io/certificate-name: %s
+    horizon.evertrust.io/request-id: %s
+spec:
+  request: %s
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: valid-clusterissuer
+`, name, certificateName, horizonRequestId, csr)
+}
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.
 // It uses the Kubernetes TokenRequest API to generate a token by directly sending a request

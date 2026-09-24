@@ -79,6 +79,64 @@ func WaitForCertificateRequestReady(certificateRequestName string) func(Gomega) 
 	}
 }
 
+func WaitForCertificateRequestApproved(certificateRequestName string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+			"-o", "jsonpath={.status.conditions[?(@.type=='Approved')].status}")
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("True"), "CertificateRequest %s not approved", certificateRequestName)
+	}
+}
+
+// WaitForCertificateRequestDenied returns a function suitable for Gomega's Eventually to
+// assert that the specified certificate request ends up with a Ready=False/Denied condition.
+func WaitForCertificateRequestDenied(certificateRequestName string) func(Gomega) {
+	return func(g Gomega) {
+		status, err := CertificateRequestJSONPath(certificateRequestName, "{.status.conditions[?(@.type=='Ready')].status}")
+		g.Expect(err).NotTo(HaveOccurred())
+		reason, err := CertificateRequestJSONPath(certificateRequestName, "{.status.conditions[?(@.type=='Ready')].reason}")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(status).To(Equal("False"), "CertificateRequest %s Ready status", certificateRequestName)
+		g.Expect(reason).To(Equal("Denied"), "CertificateRequest %s Ready reason", certificateRequestName)
+	}
+}
+
+// WaitForCertificateRequestFailed returns a function suitable for Gomega's Eventually to
+// assert that the specified certificate request ends up with a Ready=False/Failed condition.
+func WaitForCertificateRequestFailed(certificateRequestName string) func(Gomega) {
+	return func(g Gomega) {
+		status, err := CertificateRequestJSONPath(certificateRequestName, "{.status.conditions[?(@.type=='Ready')].status}")
+		g.Expect(err).NotTo(HaveOccurred())
+		reason, err := CertificateRequestJSONPath(certificateRequestName, "{.status.conditions[?(@.type=='Ready')].reason}")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(status).To(Equal("False"), "CertificateRequest %s Ready status", certificateRequestName)
+		g.Expect(reason).To(Equal("Failed"), "CertificateRequest %s Ready reason", certificateRequestName)
+	}
+}
+
+// CertificateJSONPath returns the given jsonpath expression evaluated on a certificate.
+func CertificateJSONPath(certificateName string, jsonPath string) (string, error) {
+	cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificates/%s", certificateName),
+		"-o", "jsonpath="+jsonPath)
+	return Run(cmd)
+}
+
+// CertificateRequestJSONPath returns the given jsonpath expression evaluated on a certificate request.
+func CertificateRequestJSONPath(certificateRequestName string, jsonPath string) (string, error) {
+	cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+		"-o", "jsonpath="+jsonPath)
+	return Run(cmd)
+}
+
+func ExpectCertificateRequestApprovedBy(certificateRequestName string, reason string) {
+	cmd := exec.Command("kubectl", "get", fmt.Sprintf("certificaterequests/%s", certificateRequestName),
+		"-o", "jsonpath={.status.conditions[?(@.type=='Approved')].reason}")
+	output, err := Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to fetch CertificateRequest %s", certificateRequestName)
+	Expect(output).To(Equal(reason), "CertificateRequest %s approved by an unexpected approver", certificateRequestName)
+}
+
 // WaitForIssuerReady returns a function suitable for Gomega's Eventually to
 // assert that the specified issuer (or clusterissuer) reaches Ready status.
 func WaitForIssuerReady(resource string, namespace string) func(Gomega) {
@@ -146,6 +204,14 @@ func ApplyManifest(manifestPath string, args ...string) {
 	cmd := exec.Command("kubectl", cmdArgs...)
 	_, err := Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to apply manifest %s", manifestPath)
+}
+
+// ApplyManifestContent applies an inline manifest through kubectl's stdin and asserts success.
+func ApplyManifestContent(manifest string) {
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	_, err := Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "Failed to apply manifest:\n%s", manifest)
 }
 
 // UninstallCertManager uninstalls the cert manager
