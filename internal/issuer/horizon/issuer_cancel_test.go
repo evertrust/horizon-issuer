@@ -24,9 +24,9 @@ func TestCancelRequest(t *testing.T) {
 		wantWorkflow string
 		wantStatus   string
 	}{
-		{name: "pending enroll request is canceled", requestId: "legacy-request-id", response: enrollPendingResponse, wantCancel: true, wantWorkflow: "enroll", wantStatus: "canceled"},
-		{name: "pending renew request is canceled with its own workflow", requestId: "renew-request-id", response: renewPendingResponse, wantCancel: true, wantWorkflow: "renew", wantStatus: "canceled"},
-		{name: "request Horizon already denied is left alone", requestId: "legacy-request-id", response: enrollDeniedResponse},
+		{name: "pending enroll request is canceled", requestId: legacyRequestId, response: enrollPendingResponse, wantCancel: true, wantWorkflow: "enroll", wantStatus: "canceled"},
+		{name: "pending renew request is canceled with its own workflow", requestId: renewRequestId, response: renewPendingResponse, wantCancel: true, wantWorkflow: "renew", wantStatus: "canceled"},
+		{name: "request Horizon already denied is left alone", requestId: legacyRequestId, response: enrollDeniedResponse},
 		{name: "request never submitted is left alone"},
 	}
 

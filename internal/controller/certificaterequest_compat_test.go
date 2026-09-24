@@ -36,9 +36,9 @@ var _ = Describe("CertificateRequestReconciler backward compatibility", func() {
 		DeferCleanup(server.Close)
 
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-compat-a", "issuer-a", "issuer-auth")
+		issuer := readyIssuer("ns-compat-a", "issuer-a")
 		issuer.Spec.URL = server.URL
-		secret := issuerSecret("ns-compat-a", "issuer-auth")
+		secret := issuerSecret("ns-compat-a")
 		certificateRequest := certificateRequestForTests("ns-compat-a", "req-legacy", "issuer-a", true)
 		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = legacyRequestId
 		name := types.NamespacedName{Namespace: "ns-compat-a", Name: "req-legacy"}
@@ -76,9 +76,9 @@ var _ = Describe("CertificateRequestReconciler backward compatibility", func() {
 		DeferCleanup(server.Close)
 
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-compat-d", "issuer-d", "issuer-auth")
+		issuer := readyIssuer("ns-compat-d", "issuer-d")
 		issuer.Spec.URL = server.URL
-		secret := issuerSecret("ns-compat-d", "issuer-auth")
+		secret := issuerSecret("ns-compat-d")
 		certificateRequest := certificateRequestForTests("ns-compat-d", "req-horizon-denied", "issuer-d", false)
 		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = legacyRequestId
 		name := types.NamespacedName{Namespace: "ns-compat-d", Name: "req-horizon-denied"}
@@ -140,9 +140,9 @@ var _ = Describe("CertificateRequestReconciler backward compatibility", func() {
 		DeferCleanup(server.Close)
 
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-compat-b", "issuer-b", "issuer-auth")
+		issuer := readyIssuer("ns-compat-b", "issuer-b")
 		issuer.Spec.URL = server.URL
-		secret := issuerSecret("ns-compat-b", "issuer-auth")
+		secret := issuerSecret("ns-compat-b")
 		certificateRequest := certificateRequestForTests("ns-compat-b", "req-old-denied", "issuer-b", false)
 		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = legacyRequestId
 		cmutil.SetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionDenied, cmmeta.ConditionTrue,
@@ -196,9 +196,9 @@ var _ = Describe("CertificateRequestReconciler backward compatibility", func() {
 		DeferCleanup(server.Close)
 
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-compat-e", "issuer-e", "issuer-auth")
+		issuer := readyIssuer("ns-compat-e", "issuer-e")
 		issuer.Spec.URL = server.URL
-		secret := issuerSecret("ns-compat-e", "issuer-auth")
+		secret := issuerSecret("ns-compat-e")
 		certificateRequest := certificateRequestForTests("ns-compat-e", "req-denied-on-cluster", "issuer-e", false)
 		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = legacyRequestId
 		certificateRequest.Annotations[horizonissuer.RequestStatusAnnotation] = "pending"
@@ -235,9 +235,9 @@ var _ = Describe("CertificateRequestReconciler backward compatibility", func() {
 
 	It("should retry the cancel instead of closing a denied request when Horizon is unreachable", func() {
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-compat-f", "issuer-f", "issuer-auth")
+		issuer := readyIssuer("ns-compat-f", "issuer-f")
 		issuer.Spec.URL = "http://127.0.0.1:1"
-		secret := issuerSecret("ns-compat-f", "issuer-auth")
+		secret := issuerSecret("ns-compat-f")
 		certificateRequest := certificateRequestForTests("ns-compat-f", "req-denied-unreachable", "issuer-f", false)
 		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = legacyRequestId
 		cmutil.SetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionDenied, cmmeta.ConditionTrue,
@@ -263,8 +263,8 @@ var _ = Describe("CertificateRequestReconciler backward compatibility", func() {
 
 	It("should leave a request already marked Ready=False/Denied untouched", func() {
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-compat-c", "issuer-c", "issuer-auth")
-		secret := issuerSecret("ns-compat-c", "issuer-auth")
+		issuer := readyIssuer("ns-compat-c", "issuer-c")
+		secret := issuerSecret("ns-compat-c")
 		certificateRequest := certificateRequestForTests("ns-compat-c", "req-denied", "issuer-c", false)
 		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = legacyRequestId
 		cmutil.SetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady, cmmeta.ConditionFalse,

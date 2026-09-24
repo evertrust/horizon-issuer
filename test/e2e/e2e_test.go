@@ -51,6 +51,14 @@ const metricsServiceName = "horizon-issuer-controller-manager-metrics-service"
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "horizon-issuer-metrics-binding"
 
+// Annotations horizon-issuer writes on a CertificateRequest, and the Horizon status of a request
+// whose certificate has been issued.
+const (
+	requestIdAnnotation     = "horizon.evertrust.io/request-id"
+	requestStatusAnnotation = "horizon.evertrust.io/request-status"
+	requestStatusCompleted  = "completed"
+)
+
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
 	expectedAnnotations := map[string]string{
@@ -476,8 +484,8 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(failureTime).NotTo(BeEmpty())
 			utils.ExpectCertificateRequestAnnotations(requestName, map[string]string{
-				"horizon.evertrust.io/request-id":     horizonRequestId,
-				"horizon.evertrust.io/request-status": "denied",
+				requestIdAnnotation:     horizonRequestId,
+				requestStatusAnnotation: "denied",
 			})
 
 			By("leaving the approval conditions alone")
@@ -530,8 +538,8 @@ var _ = Describe("Manager", Ordered, func() {
 			By("closing the request and canceling it on Horizon")
 			Eventually(utils.WaitForCertificateRequestDenied(requestName), 3*time.Minute, time.Second).Should(Succeed())
 			utils.ExpectCertificateRequestAnnotations(requestName, map[string]string{
-				"horizon.evertrust.io/request-id":     horizonRequestId,
-				"horizon.evertrust.io/request-status": "canceled",
+				requestIdAnnotation:     horizonRequestId,
+				requestStatusAnnotation: "canceled",
 			})
 			output, err := horizonAPI(http.MethodGet, "/api/v1/requests/"+horizonRequestId, "")
 			Expect(err).NotTo(HaveOccurred(), "Failed to read request %s on Horizon: %s", horizonRequestId, output)
@@ -575,7 +583,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 				By("ensuring the request was submitted and completed on Horizon")
 				utils.ExpectCertificateRequestAnnotations("certificate-approved-concurrently-1", map[string]string{
-					"horizon.evertrust.io/request-status": "completed",
+					requestStatusAnnotation: requestStatusCompleted,
 				})
 			})
 
@@ -599,7 +607,7 @@ var _ = Describe("Manager", Ordered, func() {
 				Eventually(utils.WaitForCertificateReady("certificate-approved-before-processing"), 3*time.Minute, time.Second).Should(Succeed())
 				utils.ExpectCertificateRequestApprovedBy("certificate-approved-before-processing-1", "cert-manager.io")
 				utils.ExpectCertificateRequestAnnotations("certificate-approved-before-processing-1", map[string]string{
-					"horizon.evertrust.io/request-status": "completed",
+					requestStatusAnnotation: requestStatusCompleted,
 				})
 			})
 		})
@@ -655,8 +663,8 @@ var _ = Describe("Manager", Ordered, func() {
 
 				By("backfilling the annotations from the Horizon request")
 				utils.ExpectCertificateRequestAnnotations(legacyCompletedRequest, map[string]string{
-					"horizon.evertrust.io/request-id":     horizonRequestId,
-					"horizon.evertrust.io/request-status": "completed",
+					requestIdAnnotation:                   horizonRequestId,
+					requestStatusAnnotation:               requestStatusCompleted,
 					"horizon.evertrust.io/certificate-id": horizonCertificateId,
 				})
 

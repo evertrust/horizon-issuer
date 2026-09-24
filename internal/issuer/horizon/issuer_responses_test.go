@@ -20,6 +20,8 @@ import (
 // picks the variant from the "workflow" field, so a renew workflow must not be handled as
 // an enroll one (regression for the nil pointer dereference on renewal with horizon-go >= 2.10).
 const (
+	renewRequestId = "renew-request-id"
+
 	renewSubmitResponse = `{"module":"webra","workflow":"renew","_id":"renew-request-id","holderId":"holder",
 		"lastModificationDate":1,"profile":"issuer","registrationDate":1,"removeAt":1,"status":"pending"}`
 	renewPendingResponse = `{"module":"webra","workflow":"renew","_id":"renew-request-id","holderId":"holder",
@@ -44,7 +46,7 @@ func certificateRequestForRenew() *cmapi.CertificateRequest {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "to-renew",
 			Namespace:   "default",
-			Annotations: map[string]string{RequestIdAnnotation: "renew-request-id"},
+			Annotations: map[string]string{RequestIdAnnotation: renewRequestId},
 		},
 		Spec: cmapi.CertificateRequestSpec{Request: []byte("dummy-csr")},
 	}
@@ -67,8 +69,8 @@ func TestSubmitRenewRequestStoresRequestId(t *testing.T) {
 	if _, err := issuer.SubmitRenewRequest(context.Background(), spec, certificateRequest, "last-certificate-id"); err != nil {
 		t.Fatalf("SubmitRenewRequest() error = %v", err)
 	}
-	if got := certificateRequest.Annotations[RequestIdAnnotation]; got != "renew-request-id" {
-		t.Errorf("request-id annotation = %q, want %q", got, "renew-request-id")
+	if got := certificateRequest.Annotations[RequestIdAnnotation]; got != renewRequestId {
+		t.Errorf("request-id annotation = %q, want %q", got, renewRequestId)
 	}
 	if got := certificateRequest.Annotations[RequestStatusAnnotation]; got != string(models.REQUESTSTATUS_PENDING) {
 		t.Errorf("request-status annotation = %q, want %q", got, models.REQUESTSTATUS_PENDING)
@@ -93,7 +95,7 @@ func TestUpdateRequestHandlesRenewWorkflow(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			issuer, _ := newIssuerForServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/requests/renew-request-id" {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/requests/"+renewRequestId {
 					http.NotFound(w, r)
 					return
 				}

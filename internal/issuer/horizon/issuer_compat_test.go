@@ -17,6 +17,8 @@ import (
 // annotation, sometimes with an approval or a denial that cert-manager or the old issuer
 // already recorded.
 const (
+	legacyRequestId = "legacy-request-id"
+
 	enrollPendingResponse = `{"module":"webra","workflow":"enroll","_id":"legacy-request-id","holderId":"holder",
 		"lastModificationDate":1,"profile":"issuer","registrationDate":1,"removeAt":1,"status":"pending","template":{}}`
 	enrollDeniedResponse = `{"module":"webra","workflow":"enroll","_id":"legacy-request-id","holderId":"holder",
@@ -45,7 +47,7 @@ func legacyCertificateRequest() *cmapi.CertificateRequest {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "legacy",
 			Namespace:   "default",
-			Annotations: map[string]string{RequestIdAnnotation: "legacy-request-id"},
+			Annotations: map[string]string{RequestIdAnnotation: legacyRequestId},
 		},
 		Spec: cmapi.CertificateRequestSpec{Request: []byte("dummy-csr")},
 	}
@@ -66,7 +68,7 @@ func TestUpdateRequestBackfillsStatusAnnotationOnLegacyRequest(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			issuer, _ := newIssuerForServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/requests/legacy-request-id" {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/requests/"+legacyRequestId {
 					http.NotFound(w, r)
 					return
 				}
@@ -86,7 +88,7 @@ func TestUpdateRequestBackfillsStatusAnnotationOnLegacyRequest(t *testing.T) {
 			if got := certificateRequest.Annotations[RequestStatusAnnotation]; got != string(tc.wantStatus) {
 				t.Errorf("%s annotation = %q, want %q", RequestStatusAnnotation, got, tc.wantStatus)
 			}
-			if got := certificateRequest.Annotations[RequestIdAnnotation]; got != "legacy-request-id" {
+			if got := certificateRequest.Annotations[RequestIdAnnotation]; got != legacyRequestId {
 				t.Errorf("%s annotation = %q, must be left untouched", RequestIdAnnotation, got)
 			}
 			if tc.wantReq && result.RequeueAfter == 0 {
@@ -115,7 +117,7 @@ func TestHandleCompletedRequestLeavesApprovalToClusterPolicies(t *testing.T) {
 	issued.SetContactEmail("owner@example.com")
 	issued.SetLabels([]models.LabelData{{Key: "env", Value: "test"}})
 	completed := &models.WebRAEnrollRequestOnGetResponse{
-		Id:          "legacy-request-id",
+		Id:          legacyRequestId,
 		Status:      models.REQUESTSTATUS_COMPLETED,
 		Certificate: *models.NewNullableCertificate(issued),
 	}

@@ -26,8 +26,8 @@ import (
 var _ = Describe("CertificateRequestReconciler", func() {
 	It("should process approved requests without request-id through submit path", func() {
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-a", "issuer-a", "issuer-auth")
-		secret := issuerSecret("ns-a", "issuer-auth")
+		issuer := readyIssuer("ns-a", "issuer-a")
+		secret := issuerSecret("ns-a")
 		certificateRequest := certificateRequestForTests("ns-a", "req-approved", "issuer-a", true)
 
 		fakeClient := fake.NewClientBuilder().
@@ -60,8 +60,8 @@ var _ = Describe("CertificateRequestReconciler", func() {
 
 	It("should process unapproved requests through submit path without waiting for approval", func() {
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-b", "issuer-b", "issuer-auth")
-		secret := issuerSecret("ns-b", "issuer-auth")
+		issuer := readyIssuer("ns-b", "issuer-b")
+		secret := issuerSecret("ns-b")
 		certificateRequest := certificateRequestForTests("ns-b", "req-not-approved", "issuer-b", false)
 
 		fakeClient := fake.NewClientBuilder().
@@ -94,8 +94,8 @@ var _ = Describe("CertificateRequestReconciler", func() {
 
 	It("should retry status update on conflict and keep concurrent approval", func() {
 		testScheme := buildTestScheme()
-		issuer := readyIssuer("ns-c", "issuer-c", "issuer-auth")
-		secret := issuerSecret("ns-c", "issuer-auth")
+		issuer := readyIssuer("ns-c", "issuer-c")
+		secret := issuerSecret("ns-c")
 		certificateRequest := certificateRequestForTests("ns-c", "req-status-conflict", "issuer-c", false)
 		name := types.NamespacedName{Namespace: "ns-c", Name: "req-status-conflict"}
 
@@ -260,7 +260,10 @@ func newCertificateRequestReconcilerForTests(cl client.Client, sch *runtime.Sche
 	}
 }
 
-func readyIssuer(namespace, name, secretName string) *horizonapi.Issuer {
+// issuerAuthSecretName is the secret every test issuer authenticates with.
+const issuerAuthSecretName = "issuer-auth"
+
+func readyIssuer(namespace, name string) *horizonapi.Issuer {
 	return &horizonapi.Issuer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -269,7 +272,7 @@ func readyIssuer(namespace, name, secretName string) *horizonapi.Issuer {
 		Spec: horizonapi.IssuerSpec{
 			URL:            "https://horizon.example",
 			Profile:        "default",
-			AuthSecretName: secretName,
+			AuthSecretName: issuerAuthSecretName,
 		},
 		Status: horizonapi.IssuerStatus{
 			Conditions: []metav1.Condition{
@@ -286,10 +289,10 @@ func readyIssuer(namespace, name, secretName string) *horizonapi.Issuer {
 	}
 }
 
-func issuerSecret(namespace, name string) *corev1.Secret {
+func issuerSecret(namespace string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      issuerAuthSecretName,
 			Namespace: namespace,
 		},
 		Type: corev1.SecretTypeOpaque,
