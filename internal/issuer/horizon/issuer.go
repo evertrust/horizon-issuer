@@ -35,6 +35,7 @@ type horizonRequest interface {
 	GetId() string
 	GetStatus() models.RequestStatus
 	GetCertificate() models.Certificate
+	GetError() string
 }
 
 func requestFromSubmitResponse(response *models.RequestSubmit201Response) (horizonRequest, error) {
@@ -189,21 +190,35 @@ func (r *HorizonIssuer) UpdateRequest(ctx context.Context, certificateRequest *c
 	}
 
 	logger.Info(fmt.Sprintf("Handling %s request %s", fetched.GetStatus(), certificateRequest.UID))
-	switch fetched.GetStatus() {
-	case models.REQUESTSTATUS_COMPLETED:
-		return r.handleCompletedRequest(fetched, certificateRequest)
-	case models.REQUESTSTATUS_APPROVED:
+	if fetched.GetStatus() == models.REQUESTSTATUS_APPROVED {
 		if challenge, ok := challengeFromRequest(request.WebRAEnrollRequestOnGetResponse); ok {
 			return r.ConsumeChallenge(ctx, request.WebRAEnrollRequestOnGetResponse, challenge, certificateRequest)
 		}
-		return r.handlePendingRequest()
-	case models.REQUESTSTATUS_PENDING:
+	}
+
+	return r.handleRequestStatus(fetched, certificateRequest)
+}
+
+// handleRequestStatus dispatches a request fetched from Horizon to the handler matching
+// its status. Requests that are still moving through the workflow are requeued, finished
+// ones are reported on the CertificateRequest.
+func (r *HorizonIssuer) handleRequestStatus(request horizonRequest, certificateRequest *cmapi.CertificateRequest) (result ctrl.Result, err error) {
+	switch request.GetStatus() {
+	case models.REQUESTSTATUS_COMPLETED:
+		return r.handleCompletedRequest(request, certificateRequest)
+	case models.REQUESTSTATUS_PENDING, models.REQUESTSTATUS_APPROVED, models.REQUESTSTATUS_PROCESSING, models.REQUESTSTATUS_IN_PROGRESS:
 		return r.handlePendingRequest()
 	case models.REQUESTSTATUS_DENIED, models.REQUESTSTATUS_CANCELED:
 		return r.handleDeniedRequest(certificateRequest)
+	case models.REQUESTSTATUS_FAILED:
+		msg := "request failed on Horizon"
+		if reason := request.GetError(); reason != "" {
+			msg = fmt.Sprintf("%s: %s", msg, reason)
+		}
+		return r.handleFailedRequest(certificateRequest, errors.New(msg))
 	}
 
-	return ctrl.Result{}, errors.New("invalid request status " + string(fetched.GetStatus()))
+	return ctrl.Result{}, errors.New("invalid request status " + string(request.GetStatus()))
 }
 
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {

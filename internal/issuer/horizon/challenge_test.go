@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"net"
 	"net/url"
 	"reflect"
@@ -159,5 +160,31 @@ func TestChallengeFromRequest(t *testing.T) {
 				t.Errorf("challengeFromRequest() = (%q, %v), want (%q, %v)", challenge, ok, tt.wantChallenge, tt.wantOk)
 			}
 		})
+	}
+}
+
+func TestSubjectFromCSRKeepsRDNOrder(t *testing.T) {
+	oid := func(parts ...int) asn1.ObjectIdentifier { return asn1.ObjectIdentifier(parts) }
+	rdns := pkix.RDNSequence{
+		{{Type: oid(2, 5, 4, 3), Value: "first"}},
+		{{Type: oid(2, 5, 4, 11), Value: "R&D"}},
+		{{Type: oid(2, 5, 4, 10), Value: "EverTrust"}},
+		{{Type: oid(2, 5, 4, 11), Value: "Integration"}},
+		{{Type: oid(2, 5, 4, 3), Value: "second"}},
+		{{Type: oid(2, 5, 4, 6), Value: "FR"}},
+	}
+	rawSubject, err := asn1.Marshal(rdns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csr := newCSR(t, x509.CertificateRequest{RawSubject: rawSubject})
+
+	var got []string
+	for _, element := range subjectFromCSR(csr) {
+		got = append(got, element.Element+"="+element.GetValue())
+	}
+	want := []string{"cn.1=first", "ou.1=R&D", "o.1=EverTrust", "ou.2=Integration", "cn.2=second", "c.1=FR"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("subjectFromCSR() = %v, want %v", got, want)
 	}
 }

@@ -95,12 +95,10 @@ func (r *HorizonIssuer) ConsumeChallenge(ctx context.Context, request *models.We
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if fetched.GetStatus() != models.REQUESTSTATUS_COMPLETED {
-		return r.handlePendingRequest()
-	}
 
-	return r.handleCompletedRequest(fetched, certificateRequest)
+	return r.handleRequestStatus(fetched, certificateRequest)
 }
+
 func requestDefinesIdentity(request *models.WebRAEnrollRequestOnGetResponse) bool {
 	return len(request.Template.GetSubject()) > 0 ||
 		len(request.Template.GetSans()) > 0 ||
