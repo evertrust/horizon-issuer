@@ -46,7 +46,7 @@ func legacyCertificateRequest() *cmapi.CertificateRequest {
 	return &cmapi.CertificateRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "legacy",
-			Namespace:   "default",
+			Namespace:   testNamespace,
 			Annotations: map[string]string{RequestIdAnnotation: legacyRequestId},
 		},
 		Spec: cmapi.CertificateRequestSpec{Request: []byte("dummy-csr")},

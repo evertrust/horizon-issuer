@@ -26,6 +26,7 @@ import (
 // an enroll one (regression for the nil pointer dereference on renewal with horizon-go >= 2.10).
 const (
 	renewRequestId = "renew-request-id"
+	testNamespace  = "default"
 
 	renewSubmitResponse = `{"module":"webra","workflow":"renew","_id":"renew-request-id","holderId":"holder",
 		"lastModificationDate":1,"profile":"issuer","registrationDate":1,"removeAt":1,"status":"pending"}`
@@ -50,7 +51,7 @@ func certificateRequestForRenew() *cmapi.CertificateRequest {
 	return &cmapi.CertificateRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "to-renew",
-			Namespace:   "default",
+			Namespace:   testNamespace,
 			Annotations: map[string]string{RequestIdAnnotation: renewRequestId},
 		},
 		Spec: cmapi.CertificateRequestSpec{Request: []byte("dummy-csr")},
@@ -209,7 +210,7 @@ func TestConsumeChallengeFollowsRequestStatus(t *testing.T) {
 			certificateRequest := &cmapi.CertificateRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "to-enroll",
-					Namespace:   "default",
+					Namespace:   testNamespace,
 					Annotations: map[string]string{RequestIdAnnotation: "enroll-request-id"},
 				},
 				Spec: cmapi.CertificateRequestSpec{Request: csrPEM},
