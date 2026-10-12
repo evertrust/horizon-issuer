@@ -16,7 +16,12 @@ import (
 	"github.com/evertrust/horizon-go/v2/utils"
 )
 
-const testDNSName = "example.org"
+const (
+	testDNSName         = "example.org"
+	testOrganization    = "EverTrust"
+	testUnitRD          = "R&D"
+	testUnitIntegration = "Integration"
+)
 
 func newCSR(t *testing.T, template x509.CertificateRequest) *x509.CertificateRequest {
 	t.Helper()
@@ -40,8 +45,8 @@ func TestSubjectFromCSR(t *testing.T) {
 	csr := newCSR(t, x509.CertificateRequest{
 		Subject: pkix.Name{
 			Country:            []string{"FR"},
-			Organization:       []string{"EverTrust"},
-			OrganizationalUnit: []string{"R&D", "Integration"},
+			Organization:       []string{testOrganization},
+			OrganizationalUnit: []string{testUnitRD, testUnitIntegration},
 			CommonName:         testDNSName,
 		},
 	})
@@ -53,9 +58,9 @@ func TestSubjectFromCSR(t *testing.T) {
 
 	want := map[string]string{
 		"c.1":  "FR",
-		"o.1":  "EverTrust",
-		"ou.1": "R&D",
-		"ou.2": "Integration",
+		"o.1":  testOrganization,
+		"ou.1": testUnitRD,
+		"ou.2": testUnitIntegration,
 		"cn.1": testDNSName,
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -167,9 +172,9 @@ func TestSubjectFromCSRKeepsRDNOrder(t *testing.T) {
 	oid := func(parts ...int) asn1.ObjectIdentifier { return asn1.ObjectIdentifier(parts) }
 	rdns := pkix.RDNSequence{
 		{{Type: oid(2, 5, 4, 3), Value: "first"}},
-		{{Type: oid(2, 5, 4, 11), Value: "R&D"}},
-		{{Type: oid(2, 5, 4, 10), Value: "EverTrust"}},
-		{{Type: oid(2, 5, 4, 11), Value: "Integration"}},
+		{{Type: oid(2, 5, 4, 11), Value: testUnitRD}},
+		{{Type: oid(2, 5, 4, 10), Value: testOrganization}},
+		{{Type: oid(2, 5, 4, 11), Value: testUnitIntegration}},
 		{{Type: oid(2, 5, 4, 3), Value: "second"}},
 		{{Type: oid(2, 5, 4, 6), Value: "FR"}},
 	}
@@ -179,11 +184,12 @@ func TestSubjectFromCSRKeepsRDNOrder(t *testing.T) {
 	}
 	csr := newCSR(t, x509.CertificateRequest{RawSubject: rawSubject})
 
-	var got []string
-	for _, element := range subjectFromCSR(csr) {
+	elements := subjectFromCSR(csr)
+	got := make([]string, 0, len(elements))
+	for _, element := range elements {
 		got = append(got, element.Element+"="+element.GetValue())
 	}
-	want := []string{"cn.1=first", "ou.1=R&D", "o.1=EverTrust", "ou.2=Integration", "cn.2=second", "c.1=FR"}
+	want := []string{"cn.1=first", "ou.1=" + testUnitRD, "o.1=" + testOrganization, "ou.2=" + testUnitIntegration, "cn.2=second", "c.1=FR"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("subjectFromCSR() = %v, want %v", got, want)
 	}
