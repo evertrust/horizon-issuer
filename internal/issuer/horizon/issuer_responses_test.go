@@ -2,8 +2,13 @@ package horizon
 
 import (
 	"context"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	cmutil "github.com/cert-manager/cert-manager/pkg/api/util"
@@ -152,5 +157,90 @@ func TestRequestFromResponsesSelectsPopulatedVariant(t *testing.T) {
 	}
 	if _, err := requestFromGetResponse(&models.RequestGet200Response{}); err == nil {
 		t.Error("expected an error when no supported get variant is populated")
+	}
+}
+
+// Enroll request as Horizon returns it once an approver has released the challenge.
+const enrollApprovedWithChallengeResponse = `{"module":"webra","workflow":"enroll","_id":"enroll-request-id",
+	"lastModificationDate":1,"profile":"issuer","registrationDate":1,"removeAt":1,"status":"approved",
+	"template":{},"password":{"value":"challenge"}}`
+
+func enrollResponseWithStatus(status string, extra string) string {
+	return `{"module":"webra","workflow":"enroll","_id":"enroll-request-id","lastModificationDate":1,
+		"profile":"issuer","registrationDate":1,"removeAt":1,"template":{},"status":"` + status + `"` + extra + `}`
+}
+
+func TestConsumeChallengeFollowsRequestStatus(t *testing.T) {
+	tests := []struct {
+		name        string
+		response    string
+		wantRequeue bool
+		wantDenied  bool
+		wantFailed  bool
+	}{
+		{name: "request still pending after the challenge is requeued", response: enrollResponseWithStatus("pending", ""), wantRequeue: true},
+		{name: "request still processing after the challenge is requeued", response: enrollResponseWithStatus("processing", ""), wantRequeue: true},
+		{name: "denied request is marked failed", response: enrollResponseWithStatus("denied", ""), wantDenied: true},
+		{name: "canceled request is marked failed", response: enrollResponseWithStatus("canceled", ""), wantDenied: true},
+		{name: "failed request is marked invalid", response: enrollResponseWithStatus("failed", `,"error":"boom"`), wantFailed: true},
+	}
+
+	csr := newCSR(t, x509.CertificateRequest{Subject: pkix.Name{CommonName: testDNSName}})
+	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr.Raw})
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			issuer, _ := newIssuerForServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/api/v1/challenge/submit":
+					_, _ = w.Write([]byte(`{"certificate":"dummy"}`))
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/requests/enroll-request-id":
+					_, _ = w.Write([]byte(tc.response))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+
+			var request models.WebRAEnrollRequestOnGetResponse
+			if err := json.Unmarshal([]byte(enrollApprovedWithChallengeResponse), &request); err != nil {
+				t.Fatal(err)
+			}
+			certificateRequest := &cmapi.CertificateRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "to-enroll",
+					Namespace:   "default",
+					Annotations: map[string]string{RequestIdAnnotation: "enroll-request-id"},
+				},
+				Spec: cmapi.CertificateRequestSpec{Request: csrPEM},
+			}
+
+			result, err := issuer.ConsumeChallenge(context.Background(), &request, "challenge", certificateRequest)
+			if tc.wantFailed {
+				if err == nil || !strings.Contains(err.Error(), "boom") {
+					t.Fatalf("expected the Horizon error to be reported, got %v", err)
+				}
+				invalid := cmutil.GetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionInvalidRequest)
+				if invalid == nil || invalid.Status != cmmeta.ConditionTrue {
+					t.Errorf("expected the InvalidRequest condition, conditions = %+v", certificateRequest.Status.Conditions)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ConsumeChallenge() error = %v", err)
+			}
+			if tc.wantRequeue && result.RequeueAfter == 0 {
+				t.Errorf("expected the request to be requeued, got %+v", result)
+			}
+			if tc.wantDenied {
+				ready := cmutil.GetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady)
+				if ready == nil || ready.Status != cmmeta.ConditionFalse || ready.Reason != cmapi.CertificateRequestReasonFailed {
+					t.Errorf("expected the request to be failed, conditions = %+v", certificateRequest.Status.Conditions)
+				}
+				if certificateRequest.Status.FailureTime == nil {
+					t.Error("expected a failure time on the denied request")
+				}
+			}
+		})
 	}
 }

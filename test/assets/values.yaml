@@ -15,8 +15,13 @@ temporaryDatabase:
   enabled: true
   extraVolumes:
     - name: mongo-initdb
-      configMap:
-        name: mongo-initdb
+      projected:
+        sources:
+          - configMap:
+              name: mongo-initdb
+          - configMap:
+              name: mongo-initdb-challenge
+              optional: true
   extraVolumeMounts:
     - name: mongo-initdb
       mountPath: /docker-entrypoint-initdb.d
