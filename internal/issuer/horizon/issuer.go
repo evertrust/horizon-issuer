@@ -29,8 +29,12 @@ const (
 	LabelAnnotation             = IssuerNamespace + "/labels"
 )
 
+const DefaultPendingRequestInterval = time.Minute / 4
+
 type HorizonIssuer struct {
 	Client horizon.APIClient
+
+	PendingRequestInterval time.Duration
 }
 
 type horizonRequest interface {
@@ -290,7 +294,11 @@ func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateReques
 
 func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
 	// Horizon is still working on this request, so we come back later
-	return ctrl.Result{RequeueAfter: time.Minute / 4}, nil
+	interval := r.PendingRequestInterval
+	if interval <= 0 {
+		interval = DefaultPendingRequestInterval
+	}
+	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
 func (r *HorizonIssuer) handleFailedRequest(certificateRequest *cmapi.CertificateRequest, err error) (ctrl.Result, error) {

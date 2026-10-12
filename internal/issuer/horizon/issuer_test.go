@@ -60,3 +60,29 @@ func TestHandleDeniedRequestKeepsAnExistingFailureTime(t *testing.T) {
 		t.Fatalf("failure time was overwritten: got %v, want %v", certificateRequest.Status.FailureTime, earlier)
 	}
 }
+
+// Requests Horizon has not finished are checked again after the configured interval, or after
+// 15 seconds when nothing is configured.
+func TestHandlePendingRequestUsesTheConfiguredInterval(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval time.Duration
+		want     time.Duration
+	}{
+		{name: "not configured", interval: 0, want: DefaultPendingRequestInterval},
+		{name: "configured", interval: 2 * time.Minute, want: 2 * time.Minute},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			issuer := &HorizonIssuer{PendingRequestInterval: tc.interval}
+
+			result, err := issuer.handlePendingRequest()
+			if err != nil {
+				t.Fatalf("handlePendingRequest returned error: %v", err)
+			}
+			if result.RequeueAfter != tc.want {
+				t.Fatalf("unexpected requeue delay: got %v, want %v", result.RequeueAfter, tc.want)
+			}
+		})
+	}
+}
