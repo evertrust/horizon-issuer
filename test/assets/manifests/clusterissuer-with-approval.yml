@@ -1,0 +1,20 @@
+# The requester account only holds the "request enroll" permission on the profile, so every
+# enrollment it submits stays pending on Horizon until an approver decides on it. The e2e suite
+# creates that account through the Horizon API before applying this manifest.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: horizon-requester-credentials
+  namespace: horizon-issuer-system
+stringData:
+  username: requester
+  password: Requester-e2e-1!
+---
+apiVersion: horizon.evertrust.io/v1beta1
+kind: ClusterIssuer
+metadata:
+  name: clusterissuer-with-approval
+spec:
+  url: http://horizon.horizon.svc.cluster.local:9000
+  profile: issuer
+  authSecretName: horizon-requester-credentials

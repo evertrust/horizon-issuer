@@ -1,0 +1,11 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-denied-on-cluster
+spec:
+  commonName: certificate-denied-on-cluster.org
+  secretName: certificate-denied-on-cluster
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: clusterissuer-with-approval

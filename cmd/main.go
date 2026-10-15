@@ -72,6 +72,7 @@ func main() {
 	var secureMetrics bool
 	var clusterResourceNamespace string
 	var healthCheckInterval int
+	var pendingRequestInterval int
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -93,6 +94,8 @@ func main() {
 		"The namespace for secrets in which cluster-scoped resources are found.")
 	flag.IntVar(&healthCheckInterval, "health-check-interval", 60,
 		"Number of seconds between two successful Horizon health checks.")
+	flag.IntVar(&pendingRequestInterval, "pending-request-interval", int(horizon.DefaultPendingRequestInterval.Seconds()),
+		"Number of seconds to wait before checking again on a request Horizon has not finished yet.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{
@@ -239,7 +242,9 @@ func main() {
 		Recorder:                 mgr.GetEventRecorderFor("horizon-issuer"),
 		ClusterResourceNamespace: clusterResourceNamespace,
 		Clock:                    clock.RealClock{},
-		Issuer:                   horizon.HorizonIssuer{},
+		Issuer: horizon.HorizonIssuer{
+			PendingRequestInterval: time.Duration(pendingRequestInterval) * time.Second,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CertificateRequest")
 		os.Exit(1)
