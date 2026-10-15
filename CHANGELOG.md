@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/evertrust/horizon-issuer/compare/1.1.0...2.0.0) (2026-10-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* allow using existing cert-manager approvers ([#68](https://github.com/evertrust/horizon-issuer/issues/68))
+
+### Features
+
+* allow using existing cert-manager approvers ([#68](https://github.com/evertrust/horizon-issuer/issues/68)) ([1911c81](https://github.com/evertrust/horizon-issuer/commit/1911c813bdb70ef3f84b2a75edaa60aef5a0d5e7))
+* **challenge:** add challenge support for Horizon issuer ([#73](https://github.com/evertrust/horizon-issuer/issues/73)) ([27679ec](https://github.com/evertrust/horizon-issuer/commit/27679ecf75509a64196aab268eda98fa04470b0e))
+
+
+### Bug Fixes
+
+* trivy-to-linear action checkout ([#71](https://github.com/evertrust/horizon-issuer/issues/71)) ([c8dc6b4](https://github.com/evertrust/horizon-issuer/commit/c8dc6b49e171a68ec9a8814cb238213fffe7f024))
+
 ## [1.1.0](https://github.com/evertrust/horizon-issuer/compare/1.0.2...1.1.0) (2026-05-05)
 
 
