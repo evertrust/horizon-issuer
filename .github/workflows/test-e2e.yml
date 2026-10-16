@@ -30,13 +30,14 @@ jobs:
           method: ${{ vars.VAULT_AUTH_METHOD }}
           path: ${{ vars.VAULT_AUTH_PATH }}
           secrets: |
+            ci/data/repositories/evertrust/horizon-issuer/registry host | REGISTRY_HOST ;
             ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
             ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
 
       - name: Login to Harbor
         uses: docker/login-action@v3
         with:
-          registry: harbor.infra.evertrust.io
+          registry: ${{ env.REGISTRY_HOST }}
           username: ${{ env.REGISTRY_USERNAME }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
@@ -62,4 +63,6 @@ jobs:
           printf "${{ secrets.LICENSE }}" >> test/assets/horizon.lic
 
       - name: Run E2E tests
+        env:
+          HORIZON_IMAGE: ${{ env.REGISTRY_HOST }}/library/horizon:${{ matrix.horizon }}
         run: mise test:e2e

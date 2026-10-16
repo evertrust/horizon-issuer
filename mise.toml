@@ -13,7 +13,7 @@ golangci-lint = "2.13.1"
 KIND_CLUSTER = "horizon-issuer-test-e2e"
 
 [vars]
-repository = "harbor.infra.evertrust.io/public-platform/horizon-issuer"
+repository = "{{ env.REGISTRY_HOST | default(value='harbor.infra.evertrust.io') }}/public-platform/horizon-issuer"
 tag = "{{ exec(command='git describe --tags --always') }}"
 image = "{{vars.repository}}:{{vars.tag}}"
 platforms = "linux/arm64,linux/amd64,linux/s390x"
@@ -104,7 +104,7 @@ run = "go test -tags=e2e ./test/e2e/ -v -ginkgo.v"
 [tasks."test:e2e:dev"]
 description = "Run end-to-end testing against the Horizon development image"
 usage = '''
-flag "--image <image>" help="Horizon development image" default="harbor.infra.evertrust.io/dev/horizon-dev:main"
+flag "--image <image>" help="Horizon development image" default="{{ env.REGISTRY_HOST | default(value='harbor.infra.evertrust.io') }}/dev/horizon-dev:main"
 flag "--version <version>" help="Horizon version this image stands for" default="2.11.0"
 '''
 run = "HORIZON_IMAGE=${usage_image} HORIZON_IMAGE_TAG=${usage_version} mise run test:e2e"

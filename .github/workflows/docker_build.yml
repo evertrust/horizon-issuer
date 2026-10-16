@@ -52,13 +52,14 @@ jobs:
           method: ${{ vars.VAULT_AUTH_METHOD }}
           path: ${{ vars.VAULT_AUTH_PATH }}
           secrets: |
+            ci/data/repositories/evertrust/horizon-issuer/registry host | REGISTRY_HOST ;
             ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
             ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
 
       - name: Login to registry
         uses: docker/login-action@v2
         with:
-          registry: harbor.infra.evertrust.io
+          registry: ${{ env.REGISTRY_HOST }}
           username: ${{ env.REGISTRY_USERNAME }}
           password: ${{ env.REGISTRY_PASSWORD }}
 
