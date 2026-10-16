@@ -16,16 +16,29 @@ jobs:
         horizon: ["2.8.4","2.9.5" ,"2.10.7", "2.11.0"]
     env:
       HORIZON_IMAGE_TAG: ${{ matrix.horizon }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
 
-      - name: Login to Quay.io
+      - name: Fetch Harbor credentials via Vault
+        uses: hashicorp/vault-action@v4
+        with:
+          url: ${{ vars.VAULT_ADDR }}
+          method: ${{ vars.VAULT_AUTH_METHOD }}
+          path: ${{ vars.VAULT_AUTH_PATH }}
+          secrets: |
+            ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
+            ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
+
+      - name: Login to Harbor
         uses: docker/login-action@v3
         with:
-          registry: quay.io
-          username: ${{ secrets.QUAY_USERNAME }}
-          password: ${{ secrets.QUAY_PASSWORD }}
+          registry: harbor.infra.evertrust.io
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY_PASSWORD }}
 
       - name: Disable containerd image store
         # Workaround for https://github.com/kubernetes-sigs/kind/issues/3795
