@@ -30,9 +30,17 @@ jobs:
           method: ${{ vars.VAULT_AUTH_METHOD }}
           path: ${{ vars.VAULT_AUTH_PATH }}
           secrets: |
-            ci/data/repositories/evertrust/horizon-issuer/registry host | REGISTRY_HOST ;
+            ci/data/repositories/evertrust/horizon-issuer/registry url | REGISTRY_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry dev_url | REGISTRY_DEV_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry library_url | REGISTRY_LIBRARY_URL ;
             ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
             ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
+
+      - name: Resolve registry host
+        shell: bash
+        run: |
+          printf '::add-mask::%s\n' "${REGISTRY_URL%%/*}"
+          printf 'REGISTRY_HOST=%s\n' "${REGISTRY_URL%%/*}" >> "$GITHUB_ENV"
 
       - name: Login to Harbor
         uses: docker/login-action@v3
@@ -64,5 +72,5 @@ jobs:
 
       - name: Run E2E tests
         env:
-          HORIZON_IMAGE: ${{ env.REGISTRY_HOST }}/library/horizon:${{ matrix.horizon }}
+          HORIZON_IMAGE: ${{ env.REGISTRY_LIBRARY_URL }}/horizon:${{ matrix.horizon }}
         run: mise test:e2e
