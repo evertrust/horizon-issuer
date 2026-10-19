@@ -30,17 +30,12 @@ jobs:
           method: ${{ vars.VAULT_AUTH_METHOD }}
           path: ${{ vars.VAULT_AUTH_PATH }}
           secrets: |
-            ci/data/repositories/evertrust/horizon-issuer/registry url | REGISTRY_URL ;
-            ci/data/repositories/evertrust/horizon-issuer/registry dev_url | REGISTRY_DEV_URL ;
-            ci/data/repositories/evertrust/horizon-issuer/registry library_url | REGISTRY_LIBRARY_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry registry | REGISTRY_HOST ;
+            ci/data/repositories/evertrust/horizon-issuer/registry project | REGISTRY_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry dev_project | REGISTRY_DEV_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry library_project | REGISTRY_LIBRARY_URL ;
             ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
             ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
-
-      - name: Resolve registry host
-        shell: bash
-        run: |
-          printf '::add-mask::%s\n' "${REGISTRY_URL%%/*}"
-          printf 'REGISTRY_HOST=%s\n' "${REGISTRY_URL%%/*}" >> "$GITHUB_ENV"
 
       - name: Login to Harbor
         uses: docker/login-action@v3
