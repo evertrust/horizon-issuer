@@ -779,7 +779,7 @@ var _ = Describe("Manager", Ordered, func() {
 					"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("False"), "Proxy pod not ready")
+				g.Expect(output).To(Equal("True"), "Proxy pod not ready")
 			}
 			Eventually(verifyProxyPodReady, 10*time.Minute, time.Second).Should(Succeed())
 
@@ -804,9 +804,10 @@ var _ = Describe("Manager", Ordered, func() {
 // the response body. Horizon is only reachable from inside the cluster, so the call goes through a
 // short-lived curl pod. The API-ID and API-KEY headers avoid the CSRF check that cookies trigger.
 func horizonAPI(method, path, body string) (string, error) {
-	args := []string{"run", fmt.Sprintf("horizon-api-%d", time.Now().UnixNano()%1000000),
-		"--rm", "-i", "--restart=Never", "--image=curlimages/curl:latest", "--",
-		"curl", "--silent", "--show-error", "--fail-with-body",
+	podName := fmt.Sprintf("horizon-api-%d", time.Now().UnixNano())
+	args := []string{"run", podName,
+		"--restart=Never", "--image=curlimages/curl:latest", "--",
+		"curl", "--silent", "--show-error", "--fail-with-body", "--max-time", "60",
 		"-X", method, "http://horizon.horizon.svc.cluster.local:9000" + path,
 		"-H", "X-API-ID: administrator", "-H", "X-API-KEY: horizon",
 		"-H", "Content-Type: application/json", "-H", "Accept: application/json",
@@ -814,7 +815,30 @@ func horizonAPI(method, path, body string) (string, error) {
 	if body != "" {
 		args = append(args, "-d", body)
 	}
-	return utils.Run(exec.Command("kubectl", args...))
+	if _, err := utils.Run(exec.Command("kubectl", args...)); err != nil {
+		return "", err
+	}
+	defer func() {
+		_, _ = utils.Run(exec.Command("kubectl", "delete", "pod", podName, "--ignore-not-found", "--wait=false"))
+	}()
+	// Read completed pod logs instead of racing kubectl's interactive attach.
+	if _, err := utils.Run(exec.Command("kubectl", "wait", "pod/"+podName,
+		"--for=jsonpath={.status.containerStatuses[0].state.terminated}", "--timeout=2m")); err != nil {
+		return "", err
+	}
+	output, err := utils.Run(exec.Command("kubectl", "logs", podName))
+	if err != nil {
+		return output, err
+	}
+	exitCode, err := utils.Run(exec.Command("kubectl", "get", "pod", podName,
+		"-o", "jsonpath={.status.containerStatuses[0].state.terminated.exitCode}"))
+	if err != nil {
+		return output, err
+	}
+	if strings.TrimSpace(exitCode) != "0" {
+		return output, fmt.Errorf("Horizon API curl pod exited with code %s", exitCode)
+	}
+	return output, nil
 }
 
 // createRequestOnlyHorizonAccount creates the "requester" local account used by
