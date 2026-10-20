@@ -796,14 +796,14 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/clusterissuer-with-proxy", namespace), 3*time.Minute, time.Second).Should(Succeed())
 
 			By("ensuring the proxy pod received requests")
-			cmd := exec.Command("kubectl", "exec", "tinyproxy", "-n", "tinyproxy", "--", "/bin/bash", "-c",
-				"http_proxy=http://localhost:8888 wget --proxy on http://tinyproxy.stats -O - -q | sed -n '/Number of requests/{n;s/.*<td>\\([0-9]\\+\\)<\\/td>.*/\\1/p}'",
+			cmd := exec.Command("kubectl", "exec", "tinyproxy", "-n", "tinyproxy", "--", "/bin/sh", "-c",
+				`curl -fsS --proxy http://127.0.0.1:8888 http://tinyproxy.stats/ | sed -n '/Total requests/{n;s/.*<td[^>]*>\([0-9]\+\)<\/td>.*/\1/p}'`,
 			)
 			output, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to get tinyproxy stats")
 			requestCount, err := strconv.Atoi(strings.TrimSpace(output))
 			Expect(err).NotTo(HaveOccurred(), "Failed to get tinyproxy stats")
-			Expect(requestCount).To(BeNumerically(">", 0))
+			Expect(requestCount).To(BeNumerically(">", 1))
 		})
 	})
 })
