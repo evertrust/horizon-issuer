@@ -154,6 +154,14 @@ var _ = Describe("Manager", Ordered, func() {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get curl-metrics logs: %s", err)
 			}
 
+			By("Fetching proxy pod diagnostics")
+			cmd = exec.Command("kubectl", "describe", "pod", "tinyproxy", "-n", "tinyproxy")
+			proxyDescription, _ := utils.Run(cmd)
+			_, _ = fmt.Fprintf(GinkgoWriter, "Proxy pod:\n%s", proxyDescription)
+			cmd = exec.Command("kubectl", "logs", "tinyproxy", "-n", "tinyproxy")
+			proxyLogs, _ := utils.Run(cmd)
+			_, _ = fmt.Fprintf(GinkgoWriter, "Proxy logs:\n%s", proxyLogs)
+
 			By("Fetching controller manager pod description")
 			cmd = exec.Command("kubectl", "describe", "pod", controllerPodName, "-n", namespace)
 			podDescription, err := utils.Run(cmd)
@@ -781,7 +789,7 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"), "Proxy pod not ready")
 			}
-			Eventually(verifyProxyPodReady, 10*time.Minute, time.Second).Should(Succeed())
+			Eventually(verifyProxyPodReady, 2*time.Minute, time.Second).Should(Succeed())
 
 			By("creating a clusterissuer with proxy")
 			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-proxy.yml")
