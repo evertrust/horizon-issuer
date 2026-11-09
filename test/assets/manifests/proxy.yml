@@ -13,9 +13,14 @@ metadata:
 spec:
   containers:
     - name: tinyproxy
-      image: monokal/tinyproxy
-      args:
-        - ANY
+      image: kalaksi/tinyproxy:1.7@sha256:5a65354cbb5f9c0fdcc8de3d3af8dd1c5ea072b3a1f52e5961a9a5cce6eba227
+      readinessProbe:
+        tcpSocket:
+          port: http-proxy
+        periodSeconds: 1
+      env:
+        - name: STAT_HOST
+          value: tinyproxy.stats
       ports:
         - containerPort: 8888
           name: http-proxy

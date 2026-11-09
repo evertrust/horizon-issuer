@@ -12,7 +12,7 @@ manager:
   replicas: 1
 
   image:
-    repository: registry.evertrust.io/horizon-issuer
+    repository: harbor.infra.evertrust.io/public-platform/horizon-issuer
     tag: ""
     pullPolicy: IfNotPresent
 

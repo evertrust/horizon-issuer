@@ -43,7 +43,7 @@ const (
 
 	horizonHelmRepository    = "https://repo.evertrust.io/repository/charts"
 	horizonNamespace         = "horizon"
-	horizonImageRegistry     = "quay.io/evertrust"
+	horizonImageRegistry     = "harbor.infra.evertrust.io/library"
 	horizonImageName         = "horizon"
 	horizonImageTagEnv       = "HORIZON_IMAGE_TAG"
 	horizonImageEnv          = "HORIZON_IMAGE"
@@ -300,7 +300,7 @@ func HorizonImageTag() string {
 }
 
 // HorizonImage returns the registry, repository and tag of the Horizon image under test.
-// HORIZON_IMAGE runs an unreleased Horizon build such as quay.io/evertrust/horizon-dev:main,
+// HORIZON_IMAGE runs an unreleased Horizon build such as harbor.infra.evertrust.io/dev/horizon-dev:main,
 // HORIZON_IMAGE_TAG still being the Horizon version this build stands for.
 func HorizonImage() (registry string, repository string, tag string) {
 	image := os.Getenv(horizonImageEnv)

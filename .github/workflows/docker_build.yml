@@ -36,6 +36,7 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     permissions:
+      id-token: write
       contents: read
     steps:
       - name: Checkout release tag
@@ -44,12 +45,26 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0
 
+      - name: Fetch Harbor credentials via Vault
+        uses: hashicorp/vault-action@v4
+        with:
+          url: ${{ vars.VAULT_ADDR }}
+          method: ${{ vars.VAULT_AUTH_METHOD }}
+          path: ${{ vars.VAULT_AUTH_PATH }}
+          secrets: |
+            ci/data/repositories/evertrust/horizon-issuer/registry registry | REGISTRY_HOST ;
+            ci/data/repositories/evertrust/horizon-issuer/registry project | REGISTRY_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry dev_project | REGISTRY_DEV_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry library_project | REGISTRY_LIBRARY_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
+            ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
+
       - name: Login to registry
         uses: docker/login-action@v2
         with:
-          registry: registry.evertrust.io
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY_PASSWORD }}
 
       - name: Setup Mise
         uses: jdx/mise-action@v2
