@@ -1,35 +1,45 @@
-name: Trivy scan
+name: Scheduled SCA scan
 
 on:
   schedule:
     - cron: "0 8 * * *"
   workflow_dispatch:
 
-jobs:
-  trivy:
-    runs-on: runs-on=${{ github.run_id }}/runner=evertrust
-    permissions:
-      contents: write
-      id-token: write
+permissions:
+  contents: read
+  id-token: write
 
+concurrency:
+  group: dependency-scan-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  discover-releases:
+    runs-on: runs-on=${{ github.run_id }}/runner=evertrust
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Configure Runs-On
-        uses: runs-on/action@v2
+      - uses: runs-on/action@v2
 
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Checkout trivy-to-linear action
-        uses: actions/checkout@v4
-        with:
-          repository: evertrust/trivy-to-linear
-          ref: dcf968652d5508d7439b78717f514bdb8bb907bf
-          token: ${{ secrets.TRIVY_TO_LINEAR_TOKEN }}
-          persist-credentials: false
-          path: .github/actions/trivy-to-linear
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
-      - name: Setup Trivy
-        uses: aquasecurity/setup-trivy@v0.2.6
+      - name: Determine latest release of each maintained version
+        id: set-matrix
+        run: echo "matrix=$(mise run --quiet scan:targets)" >> "$GITHUB_OUTPUT"
+
+  dependency-scan:
+    needs: discover-releases
+    runs-on: runs-on=${{ github.run_id }}/runner=evertrust
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-releases.outputs.matrix) }}
+
+    steps:
+      - uses: runs-on/action@v2
 
       - name: Fetch secrets via Vault
         uses: hashicorp/vault-action@v2
@@ -38,33 +48,47 @@ jobs:
           method: ${{ vars.VAULT_AUTH_METHOD }}
           path: ${{ vars.VAULT_AUTH_PATH }}
           secrets: |
-            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_API_KEY   |   LINEAR_API_KEY  ;
-            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_LABEL_IDS    |   LINEAR_LABEL_IDS   ;
-            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_TEAM_ID   |   LINEAR_TEAM_ID  ;
-            ci/data/repositories/evertrust/horizon-issuer/linear  LINEAR_TODO_STATUS   |   LINEAR_TODO_STATUS  ;
+            ci/data/global/linear CI-SCAN-ACTIONS_LINEAR-APP-CLIENT-ID | LINEAR_OAUTH_CLIENT_ID ;
+            ci/data/global/linear CI-SCAN-ACTIONS_LINEAR-CLIENT-SECRET | LINEAR_OAUTH_CLIENT_SECRET ;
+            ci/data/global/linear LINEAR_VULNERABILITIES_TEAM | LINEAR_TEAM_ID ;
+            ci/data/global/linear LINEAR_VULNERABILITIES_TEAM_TRIAGE_STATUS_ID | LINEAR_TODO_STATUS ;
+            ci/data/repositories/evertrust/horizon-issuer/linear LINEAR_LABEL_NAMES | LINEAR_LABEL_NAMES ;
+            ci/data/repositories/evertrust/horizon-issuer/registry registry | REGISTRY_HOST ;
+            ci/data/repositories/evertrust/horizon-issuer/registry project | REGISTRY_URL ;
+            ci/data/repositories/evertrust/horizon-issuer/registry username | REGISTRY_USERNAME ;
+            ci/data/repositories/evertrust/horizon-issuer/registry password | REGISTRY_PASSWORD ;
 
-      - name: Run Trivy scan
-        run: trivy fs --severity CRITICAL,HIGH --format json --output trivy-horizon-issuer.json --vex repo .
-
-      - name: Produce Sbom
-        run: trivy fs --format spdx --output trivy-horizon-issuer.spdx --vex repo .
-
-      - name: Upload Trivy artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
         with:
-          name: trivy-horizon-issuer
-          path: |
-            trivy-horizon-issuer.json
-            trivy-horizon-issuer.spdx
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY_PASSWORD }}
 
-      - name: Upload Vulnerabilities to Linear
-        if: always()
-        uses: ./.github/actions/trivy-to-linear/.github/actions/trivy-to-linear
+      - name: Run SCA scan
+        uses: evertrust/sca-scan-action@v1
         with:
-          linear-api-key: ${{ env.LINEAR_API_KEY }}
+          image: registry:${{ env.REGISTRY_URL }}/horizon-issuer:${{ matrix.version }}
+          artifact-name: horizon-issuer-${{ matrix.version }}
+          sbom-path: reports/sbom.syft.json
+          grype-report-path: reports/vuln-scan-results.json
+          fail-on: high
+          ticket-on: high
+          create-linear-tickets: "true"
+          linear-oauth-client-id: ${{ env.LINEAR_OAUTH_CLIENT_ID }}
+          linear-oauth-client-secret: ${{ env.LINEAR_OAUTH_CLIENT_SECRET }}
           linear-team-id: ${{ env.LINEAR_TEAM_ID }}
           linear-todo-status: ${{ env.LINEAR_TODO_STATUS }}
-          linear-label-ids: ${{ env.LINEAR_LABEL_IDS }}
-          git-branch: ${{ github.ref_name }}
-          trivy-report-path: trivy-horizon-issuer.json
+          linear-label-names: ${{ env.LINEAR_LABEL_NAMES }}
+          git-branch: ${{ matrix.minor }}
+
+      - name: Upload SCA reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-${{ matrix.minor }}
+          path: |
+            reports/sbom.syft.json
+            reports/vuln-scan-results.json
+          if-no-files-found: error
+          retention-days: 7
