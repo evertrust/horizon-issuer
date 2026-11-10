@@ -8,9 +8,14 @@ golangci-lint = "2.13.1"
 "aqua:ko-build/ko" = "0.18.1"
 "go:sigs.k8s.io/controller-tools/cmd/controller-gen" = "v0.19.0"
 "go:sigs.k8s.io/controller-runtime/tools/setup-envtest" = "release-0.22"
+"aqua:jqlang/jq" = "1.8.1"
 
 [env]
 KIND_CLUSTER = "horizon-issuer-test-e2e"
+# Minor versions below this one are not scanned anymore
+SCAN_MIN_VERSION = "2.0"
+# Space-separated minor versions to skip, e.g. "2.0"
+SCAN_IGNORED_VERSIONS = ""
 
 [vars]
 repository = "{{ env.REGISTRY_URL | default(value='harbor.infra.evertrust.io/public-platform') }}/horizon-issuer"
@@ -133,3 +138,39 @@ run = "curl -F file=@$PACKAGE --user \"$NEXUS_USERNAME:$NEXUS_PASSWORD\" --fail 
 [tasks.publish]
 description = "Release assets after a tag"
 depends = ["publish:*"]
+
+[tasks."scan:targets"]
+description = "List the latest release of each maintained version as a GitHub Actions matrix"
+usage = '''
+flag "--remote <remote>" help="Git remote to read tags from" default="origin"
+'''
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+versions=$(git ls-remote --tags --refs "${usage_remote:?}" \
+  | sed -n 's#.*refs/tags/v\{0,1\}\([0-9]*\.[0-9]*\.[0-9]*\)$#\1#p' \
+  | sort -uV)
+
+targets=$(
+  for minor in $(cut -d. -f1,2 <<<"$versions" | sort -uV); do
+    if [[ $(printf '%s\n' "${SCAN_MIN_VERSION:?}" "$minor" | sort -V | head -n 1) != "$SCAN_MIN_VERSION" ]]; then
+      continue
+    fi
+    if [[ " ${SCAN_IGNORED_VERSIONS:-} " == *" $minor "* ]]; then
+      echo "Skipping $minor: ignored" >&2
+      continue
+    fi
+
+    version=$(grep "^${minor//./\\.}\." <<<"$versions" | tail -n 1)
+    jq -nc --arg minor "$minor" --arg version "$version" '{minor: $minor, version: $version}'
+  done
+)
+
+if [[ -z $targets ]]; then
+  echo "No release found from version $SCAN_MIN_VERSION onwards." >&2
+  exit 1
+fi
+
+jq -sc '{include: .}' <<<"$targets"
+'''
