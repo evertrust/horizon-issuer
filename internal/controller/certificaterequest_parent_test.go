@@ -26,7 +26,13 @@ import (
 // The parent Certificate carries the ID of the last certificate Horizon issued for it. Without it,
 // the next renewal is sent to Horizon as a new enrollment.
 var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
-	const certificateName = "parent-cert"
+	const (
+		certificateName  = "parent-cert"
+		readyRequestName = "req-ready"
+		// Every Ready request in these tests was issued for revision 1 of its Certificate.
+		issuedCertificateId = "cert-id-1"
+		issuedRevision      = "1"
+	)
 
 	// horizonServer counts every call made to Horizon. None is expected once a request is Ready.
 	horizonServer := func() (*httptest.Server, *atomic.Int32) {
@@ -39,12 +45,12 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 		return server, &calls
 	}
 
-	readyRequest := func(namespace, name, issuerName, certificateId, revision string) *cmapi.CertificateRequest {
+	readyRequest := func(namespace, name, issuerName string) *cmapi.CertificateRequest {
 		certificateRequest := certificateRequestForTests(namespace, name, issuerName, true)
 		certificateRequest.Annotations[cmapi.CertificateNameKey] = certificateName
-		certificateRequest.Annotations[cmapi.CertificateRequestRevisionAnnotationKey] = revision
-		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = "request-" + certificateId
-		certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation] = certificateId
+		certificateRequest.Annotations[cmapi.CertificateRequestRevisionAnnotationKey] = issuedRevision
+		certificateRequest.Annotations[horizonissuer.RequestIdAnnotation] = "request-" + issuedCertificateId
+		certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation] = issuedCertificateId
 		cmutil.SetCertificateRequestCondition(certificateRequest, cmapi.CertificateRequestConditionReady, cmmeta.ConditionTrue,
 			cmapi.CertificateRequestReasonIssued, "Certificate issued")
 		return certificateRequest
@@ -73,7 +79,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 		testScheme := buildTestScheme()
 		issuer := readyIssuer(namespace, "issuer-a")
 		issuer.Spec.URL = server.URL
-		certificateRequest := readyRequest(namespace, "req-ready", "issuer-a", "cert-id-1", "1")
+		certificateRequest := readyRequest(namespace, readyRequestName, "issuer-a")
 		certificate := parentCertificate(namespace)
 		certificateKey := types.NamespacedName{Namespace: namespace, Name: certificateName}
 
@@ -97,7 +103,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 			Build()
 
 		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, namespace)
-		result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "req-ready"}})
+		result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: readyRequestName}})
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result).To(Equal(ctrl.Result{}))
@@ -106,7 +112,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 
 		var updated cmapi.Certificate
 		Expect(fakeClient.Get(ctx, certificateKey, &updated)).To(Succeed())
-		Expect(updated.Annotations).To(HaveKeyWithValue(horizonissuer.LastCertificateIdAnnotation, "cert-id-1"))
+		Expect(updated.Annotations).To(HaveKeyWithValue(horizonissuer.LastCertificateIdAnnotation, issuedCertificateId))
 		By("keeping what cert-manager wrote in the meantime")
 		Expect(updated.Status.Revision).To(HaveValue(Equal(1)))
 		Expect(cmutil.CertificateHasCondition(&updated, cmapi.CertificateCondition{
@@ -115,7 +121,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 		})).To(BeTrue())
 
 		By("leaving the Certificate alone once the ID is there")
-		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "req-ready"}})
+		_, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: readyRequestName}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(certificateUpdates).To(Equal(2))
 	})
@@ -127,7 +133,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 		testScheme := buildTestScheme()
 		issuer := readyIssuer(namespace, "issuer-b")
 		issuer.Spec.URL = server.URL
-		oldRequest := readyRequest(namespace, "req-old", "issuer-b", "cert-id-1", "1")
+		oldRequest := readyRequest(namespace, "req-old", "issuer-b")
 		certificate := parentCertificate(namespace)
 		certificate.Annotations = map[string]string{horizonissuer.LastCertificateIdAnnotation: "cert-id-2"}
 		certificate.Status.Revision = new(int)
@@ -161,7 +167,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 		testScheme := buildTestScheme()
 		issuer := readyIssuer(namespace, "issuer-c")
 		issuer.Spec.URL = server.URL
-		certificateRequest := readyRequest(namespace, "req-ready", "issuer-c", "cert-id-1", "1")
+		certificateRequest := readyRequest(namespace, readyRequestName, "issuer-c")
 
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(testScheme).
@@ -178,7 +184,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 			Build()
 
 		reconciler := newCertificateRequestReconcilerForTests(fakeClient, testScheme, namespace)
-		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: "req-ready"}})
+		_, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: namespace, Name: readyRequestName}})
 		Expect(err).To(MatchError(ContainSubstring("apiserver unavailable")))
 		Expect(horizonCalls.Load()).To(BeZero())
 	})
@@ -186,7 +192,7 @@ var _ = Describe("CertificateRequestReconciler parent certificate ID", func() {
 	It("should skip a parent Certificate that no longer exists", func() {
 		const namespace = "ns-parent-d"
 		testScheme := buildTestScheme()
-		certificateRequest := readyRequest(namespace, "req-orphan", "issuer-d", "cert-id-1", "1")
+		certificateRequest := readyRequest(namespace, "req-orphan", "issuer-d")
 
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(testScheme).
