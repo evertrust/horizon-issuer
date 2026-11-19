@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-lost-certificate-id
+spec:
+  commonName: certificate-lost-certificate-id.org
+  secretName: certificate-lost-certificate-id
+  # Keep the first request after the renewal, to check it cannot bring back an older certificate ID
+  revisionHistoryLimit: 2
+  issuerRef:
+    group: horizon.evertrust.io
+    kind: ClusterIssuer
+    name: valid-clusterissuer

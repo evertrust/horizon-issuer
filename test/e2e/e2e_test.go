@@ -492,6 +492,97 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(utils.WaitForCertificateRequestReady("certificate-to-renew-2"), 3*time.Minute, time.Second).Should(Succeed())
 		})
 
+		// The ID of the last issued certificate lives on the parent Certificate. If writing it fails
+		// after the request was saved as Ready (a conflict with cert-manager, for instance), the next
+		// renewal used to go to Horizon as a new enrollment. The race cannot be triggered on demand,
+		// so the test removes the annotation while the controller is stopped, which leaves the
+		// Certificate in the same state.
+		It("restores the last certificate ID of an issued request and renews with it", func() {
+			const (
+				certificateName                 = "certificate-lost-certificate-id"
+				firstRequest                    = certificateName + "-1"
+				secondRequest                   = certificateName + "-2"
+				lastCertificateIdAnnotation     = "horizon.evertrust.io/last-certificate-id"
+				lastCertificateIdAnnotationPath = "{.metadata.annotations.horizon\\.evertrust\\.io/last-certificate-id}"
+				certificateIdAnnotationPath     = "{.metadata.annotations.horizon\\.evertrust\\.io/certificate-id}"
+			)
+			expectLastCertificateId := func(expected string) func(Gomega) {
+				return func(g Gomega) {
+					output, err := utils.CertificateJSONPath(certificateName, lastCertificateIdAnnotationPath)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal(expected), "Certificate %s last-certificate-id annotation", certificateName)
+				}
+			}
+
+			By("issuing a first certificate")
+			utils.ApplyManifest("test/assets/manifests/certificate-lost-certificate-id.yml")
+			Eventually(utils.WaitForCertificateReady(certificateName), 3*time.Minute, time.Second).Should(Succeed())
+			firstCertificateId, err := utils.CertificateRequestJSONPath(firstRequest, certificateIdAnnotationPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(firstCertificateId).NotTo(BeEmpty())
+			Eventually(expectLastCertificateId(firstCertificateId), 2*time.Minute, time.Second).Should(Succeed())
+
+			stopControllerManager()
+
+			By("removing the certificate ID from the Certificate, as a lost write would")
+			cmd := exec.Command("kubectl", "annotate", "certificate", certificateName, lastCertificateIdAnnotation+"-")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to remove the last-certificate-id annotation")
+			output, err := utils.CertificateJSONPath(certificateName, lastCertificateIdAnnotationPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(BeEmpty())
+
+			controllerPodName = startControllerManager()
+
+			By("putting the certificate ID back from the request, which is already Ready")
+			Eventually(expectLastCertificateId(firstCertificateId), 2*time.Minute, time.Second).Should(Succeed())
+
+			By("renewing the certificate")
+			generation, err := utils.CertificateJSONPath(certificateName, "{.metadata.generation}")
+			Expect(err).NotTo(HaveOccurred())
+			patch := fmt.Sprintf(`{"status":{"conditions":[{"type":"Issuing","status":"True",`+
+				`"reason":"ManuallyTriggered","message":"Certificate re-issuance manually triggered",`+
+				`"observedGeneration":%s}]}}`, generation)
+			cmd = exec.Command("kubectl", "patch", "certificate", certificateName,
+				"--type=merge", "--subresource=status", "-p", patch)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to trigger renewal")
+			Eventually(utils.WaitForCertificateRequestReady(secondRequest), 3*time.Minute, time.Second).Should(Succeed())
+
+			By("checking Horizon received a renewal, not a new enrollment")
+			horizonRequestId, err := utils.CertificateRequestJSONPath(secondRequest,
+				"{.metadata.annotations.horizon\\.evertrust\\.io/request-id}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(horizonRequestId).NotTo(BeEmpty())
+			output, err = horizonAPI(http.MethodGet, "/api/v1/requests/"+horizonRequestId, "")
+			Expect(err).NotTo(HaveOccurred(), "Failed to read request %s on Horizon: %s", horizonRequestId, output)
+			var horizonRequest struct {
+				Workflow string `json:"workflow"`
+			}
+			Expect(json.Unmarshal([]byte(output), &horizonRequest)).To(Succeed(), "Unexpected Horizon response: %s", output)
+			Expect(horizonRequest.Workflow).To(Equal("renew"))
+
+			secondCertificateId, err := utils.CertificateRequestJSONPath(secondRequest, certificateIdAnnotationPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(secondCertificateId).NotTo(BeEmpty())
+			Expect(secondCertificateId).NotTo(Equal(firstCertificateId))
+			Eventually(expectLastCertificateId(secondCertificateId), 2*time.Minute, time.Second).Should(Succeed())
+
+			By("waiting for cert-manager to finish issuing the second revision")
+			Eventually(func(g Gomega) {
+				revision, err := utils.CertificateJSONPath(certificateName, "{.status.revision}")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(revision).To(Equal("2"))
+			}, 3*time.Minute, time.Second).Should(Succeed())
+
+			By("keeping the latest certificate ID when the first request is reconciled again")
+			_, err = utils.CertificateRequestJSONPath(firstRequest, "{.metadata.name}")
+			Expect(err).NotTo(HaveOccurred(), "the first request should be kept by revisionHistoryLimit")
+			stopControllerManager()
+			controllerPodName = startControllerManager()
+			Consistently(expectLastCertificateId(secondCertificateId), 30*time.Second, 2*time.Second).Should(Succeed())
+		})
+
 		// A request Horizon refuses has to fail the parent Certificate the way it did in 1.1.x, when
 		// the issuer set a Denied condition. cert-manager only fails a Certificate on a Denied
 		// condition or on a Ready=False/Failed request, so this is what the issuer must produce.

@@ -23,6 +23,7 @@ import (
 	"maps"
 	"net"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/evertrust/horizon-go/v2/utils"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -182,6 +184,9 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Type:   cmapi.CertificateRequestConditionReady,
 		Status: cmmeta.ConditionTrue,
 	}) {
+		if err := r.syncLastCertificateId(ctx, &certificateRequest); err != nil {
+			return ctrl.Result{}, fmt.Errorf("unable to set %s on the parent Certificate: %w", horizonissuer.LastCertificateIdAnnotation, err)
+		}
 		log.V(1).Info("CertificateRequest is Ready. Ignoring.")
 		return ctrl.Result{}, nil
 	}
@@ -234,19 +239,9 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 			statusUpdateErr = r.updateCertificateRequestStatusWithRetry(ctx, req.NamespacedName, &certificateRequest)
 		}
 
-		// if CertificateIdAnnotation was set, we should update the parent Certificate object with the annotation
-		if certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation] != "" {
-			certificate, err := issuerutil.CertificateFromRequest(r.Client, ctx, &certificateRequest)
-			if err != nil {
-				log.Error(err, "Unable to get the Certificate object. Ignoring.")
-			}
-			// If certificate has no annotation, we should create the map
-			if certificate.Annotations == nil {
-				certificate.Annotations = make(map[string]string)
-			}
-			certificate.Annotations[horizonissuer.LastCertificateIdAnnotation] = certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation]
-			parentUpdateErr = r.Update(ctx, certificate)
-		}
+		// Once Horizon returned a certificate ID, copy it to the parent Certificate for the next renewal.
+		// If this fails after the request was saved as Ready, the Ready branch above retries it.
+		parentUpdateErr = r.syncLastCertificateId(ctx, &certificateRequest)
 
 		if updateErr != nil || statusUpdateErr != nil || parentUpdateErr != nil {
 			err = utilerrors.NewAggregate([]error{err, updateErr, statusUpdateErr, parentUpdateErr})
@@ -375,6 +370,58 @@ func (r *CertificateRequestReconciler) updateCertificateRequestStatusWithRetry(c
 		copyManagedStatusFields(&latest, desired)
 		return r.Status().Update(ctx, &latest)
 	})
+}
+
+// syncLastCertificateId copies the Horizon certificate ID of an issued request onto its parent
+// Certificate, where the next request reads it to choose a renewal over an enrollment.
+func (r *CertificateRequestReconciler) syncLastCertificateId(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
+	certificateId := certificateRequest.Annotations[horizonissuer.CertificateIdAnnotation]
+	certificateName := certificateRequest.Annotations[cmapi.CertificateNameKey]
+	if certificateId == "" || certificateName == "" {
+		return nil
+	}
+
+	log := ctrl.LoggerFrom(ctx)
+	name := types.NamespacedName{Namespace: certificateRequest.Namespace, Name: certificateName}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var certificate cmapi.Certificate
+		if err := r.Get(ctx, name, &certificate); err != nil {
+			if apierrors.IsNotFound(err) {
+				log.V(1).Info("Parent Certificate not found, not recording the certificate ID", "certificate", name)
+				return nil
+			}
+			return err
+		}
+
+		if certificate.Annotations[horizonissuer.LastCertificateIdAnnotation] == certificateId {
+			return nil
+		}
+		if requestPredatesCertificateRevision(certificateRequest, &certificate) {
+			log.V(1).Info("CertificateRequest is older than the parent Certificate revision, not recording its certificate ID", "certificate", name)
+			return nil
+		}
+
+		if certificate.Annotations == nil {
+			certificate.Annotations = make(map[string]string)
+		}
+		certificate.Annotations[horizonissuer.LastCertificateIdAnnotation] = certificateId
+		return r.Update(ctx, &certificate)
+	})
+}
+
+// requestPredatesCertificateRevision tells whether cert-manager has already issued a later
+// revision of the Certificate than the one this request was created for. When either revision is
+// unknown, the request is treated as current.
+func requestPredatesCertificateRevision(certificateRequest *cmapi.CertificateRequest, certificate *cmapi.Certificate) bool {
+	if certificate.Status.Revision == nil {
+		return false
+	}
+	requestRevision, err := strconv.Atoi(certificateRequest.Annotations[cmapi.CertificateRequestRevisionAnnotationKey])
+	if err != nil {
+		return false
+	}
+	return requestRevision < *certificate.Status.Revision
 }
 
 func mergeStringMap(dst, src map[string]string) map[string]string {
