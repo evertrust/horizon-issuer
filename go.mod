@@ -3,7 +3,7 @@ module github.com/evertrust/horizon-issuer
 go 1.27.0
 
 require (
-	github.com/cert-manager/cert-manager v1.19.3
+	github.com/cert-manager/cert-manager v1.19.6
 	github.com/evertrust/horizon-go/v2 v2.11.0
 	github.com/go-logr/logr v1.4.4
 	github.com/onsi/ginkgo/v2 v2.22.0
