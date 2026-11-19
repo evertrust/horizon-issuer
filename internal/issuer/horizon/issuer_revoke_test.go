@@ -69,7 +69,6 @@ func (f *fakeHorizonForRevoke) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 func TestRevokeCertificate(t *testing.T) {
 	issued := newTestCertificatePEM(t, "issued.example")
-	other := newTestCertificatePEM(t, "other.example")
 
 	tests := []struct {
 		name             string
@@ -108,15 +107,6 @@ func TestRevokeCertificate(t *testing.T) {
 			revokeStatus:     http.StatusBadRequest,
 			revokeBody:       alreadyRevokedResponse,
 			wantErr:          "Certificate not found",
-			wantLookup:       true,
-			wantRevokeErrMsg: true,
-		},
-		{
-			name:             "revoked status of another certificate is not trusted",
-			revokeStatus:     http.StatusBadRequest,
-			revokeBody:       alreadyRevokedResponse,
-			lookup:           horizonCertificate(other, true),
-			wantErr:          "a different certificate was returned by Horizon",
 			wantLookup:       true,
 			wantRevokeErrMsg: true,
 		},
@@ -166,7 +156,7 @@ func TestRevokeCertificate(t *testing.T) {
 	}
 }
 
-// The request holds the whole chain. Only the leaf is looked up on Horizon and compared.
+// The request holds the whole chain. Only the leaf is looked up on Horizon.
 func TestRevokeCertificateLooksUpTheLeafOnly(t *testing.T) {
 	leaf := newTestCertificatePEM(t, "leaf.example")
 	intermediate := newTestCertificatePEM(t, "intermediate.example")

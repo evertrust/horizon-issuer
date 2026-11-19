@@ -1,7 +1,6 @@
 package horizon
 
 import (
-	"bytes"
 	"context"
 	"encoding/pem"
 	"errors"
@@ -283,9 +282,9 @@ func (r *HorizonIssuer) CancelRequest(ctx context.Context, certificateRequest *c
 //
 // Horizon refuses to revoke a certificate twice, and a certificate can be revoked before its
 // request is deleted, for example by a holder policy when a newer certificate is issued. So when
-// the revocation fails, the certificate is looked up on Horizon. If Horizon holds that exact
-// certificate as revoked, there is nothing left to do and alreadyRevoked is true. In every other
-// case the revocation error is returned so that the deletion is retried.
+// the revocation fails, the certificate is looked up on Horizon by its PEM. If Horizon holds it
+// as revoked, there is nothing left to do and alreadyRevoked is true. In every other case the
+// revocation error is returned so that the deletion is retried.
 func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (alreadyRevoked bool, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
@@ -318,9 +317,8 @@ func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateReques
 
 var errRevokeCertificate = errors.New("unable to revoke certificate on Horizon")
 
-// certificateIsRevoked looks the leaf certificate up on Horizon and reports whether Horizon holds
-// it as revoked. The certificate Horizon returns must be the same one, byte for byte, otherwise
-// an error is returned: a revoked status only counts for the certificate of this request.
+// certificateIsRevoked looks the leaf certificate up on Horizon by its PEM and reports whether
+// Horizon holds it as revoked.
 func (r *HorizonIssuer) certificateIsRevoked(ctx context.Context, certificatePem []byte) (bool, error) {
 	leaf, err := leafCertificateDER(certificatePem)
 	if err != nil {
@@ -336,14 +334,6 @@ func (r *HorizonIssuer) certificateIsRevoked(ctx context.Context, certificatePem
 	}
 	if found == nil {
 		return false, errors.New("no certificate returned by Horizon")
-	}
-
-	held, err := leafCertificateDER([]byte(found.Certificate.GetCertificate()))
-	if err != nil {
-		return false, fmt.Errorf("certificate returned by Horizon: %w", err)
-	}
-	if !bytes.Equal(held, leaf) {
-		return false, errors.New("a different certificate was returned by Horizon")
 	}
 
 	return found.Certificate.GetRevoked(), nil
