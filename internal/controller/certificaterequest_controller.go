@@ -324,16 +324,20 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 func (r *CertificateRequestReconciler) handleDeletion(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
 	if controllerutil.ContainsFinalizer(certificateRequest, FinalizerName) {
-		// our finalizer is present, so lets handle any external dependency
-		if err := r.Issuer.RevokeCertificate(ctx, certificateRequest); err != nil {
+		// our finalizer is present, so lets handle any external dependency. A certificate that
+		// Horizon already holds as revoked needs nothing more, so the finalizer can go.
+		alreadyRevoked, err := r.Issuer.RevokeCertificate(ctx, certificateRequest)
+		if err != nil {
 			return err
+		}
+
+		issuer, issuerErr := r.issuerFromRequest(ctx, certificateRequest)
+		if issuerErr != nil {
+			ctrl.LoggerFrom(ctx).Info("Unable to fetch issuer to record revocation event", "error", issuerErr)
+		} else if alreadyRevoked {
+			r.Recorder.Event(issuer, corev1.EventTypeNormal, "CertificateAlreadyRevoked", fmt.Sprintf("Certificate of request %s was already revoked on Horizon", certificateRequest.Name))
 		} else {
-			issuer, issuerErr := r.issuerFromRequest(ctx, certificateRequest)
-			if issuerErr != nil {
-				ctrl.LoggerFrom(ctx).Info("Unable to fetch issuer to record revocation event", "error", issuerErr)
-			} else {
-				r.Recorder.Event(issuer, corev1.EventTypeNormal, "RevokedCertificate", fmt.Sprintf("Revoked certificate request %s on Horizon", certificateRequest.Name))
-			}
+			r.Recorder.Event(issuer, corev1.EventTypeNormal, "RevokedCertificate", fmt.Sprintf("Revoked certificate request %s on Horizon", certificateRequest.Name))
 		}
 
 		// remove our finalizer from the list and update it.

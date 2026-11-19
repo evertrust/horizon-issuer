@@ -158,6 +158,41 @@ func WaitForIssuerReady(resource string, namespace string) func(Gomega) {
 	}
 }
 
+// WaitForCertificateRequestDeleted returns a function suitable for Gomega's Eventually to
+// assert that the specified certificate request is gone, which means its finalizers were removed.
+func WaitForCertificateRequestDeleted(certificateRequestName string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "certificaterequests", certificateRequestName,
+			"--ignore-not-found", "-o", "name")
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(output)).To(BeEmpty(), "CertificateRequest %s still exists", certificateRequestName)
+	}
+}
+
+// WaitForClusterIssuerEvent returns a function suitable for Gomega's Eventually to
+// assert that an event with the given reason was recorded on the specified cluster issuer.
+func WaitForClusterIssuerEvent(clusterIssuerName string, reason string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "events",
+			"--all-namespaces",
+			"--field-selector",
+			fmt.Sprintf("involvedObject.kind=ClusterIssuer,involvedObject.name=%s,reason=%s", clusterIssuerName, reason),
+			"-o", "json",
+		)
+		output, err := Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		var events struct {
+			Items []struct {
+				Reason string `json:"reason"`
+			} `json:"items"`
+		}
+		g.Expect(json.Unmarshal([]byte(output), &events)).To(Succeed())
+		g.Expect(events.Items).NotTo(BeEmpty(), "%s event not found for ClusterIssuer %s", reason, clusterIssuerName)
+	}
+}
+
 // ExpectCertificateRequestAnnotations fetches CertificateRequests for the given certificate request name
 // and asserts that their annotations match the expected entries.
 func ExpectCertificateRequestAnnotations(certificateRequestName string, expectedAnnotations map[string]string) {

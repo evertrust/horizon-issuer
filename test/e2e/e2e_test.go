@@ -848,26 +848,57 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("ensuring the RevokedCertificate event has been recorded")
-			verifyRevokedEvent := func(g Gomega) {
-				eventCmd := exec.Command("kubectl", "get", "events",
-					"--all-namespaces",
-					"--field-selector",
-					"involvedObject.kind=ClusterIssuer,involvedObject.name=clusterissuer-with-revokecertificates,reason=RevokedCertificate",
-					"-o", "json",
-				)
-				eventOutput, cmdErr := utils.Run(eventCmd)
-				g.Expect(cmdErr).NotTo(HaveOccurred())
+			Eventually(utils.WaitForClusterIssuerEvent("clusterissuer-with-revokecertificates", "RevokedCertificate"),
+				2*time.Minute, 5*time.Second).Should(Succeed())
+		})
 
-				var events struct {
-					Items []struct {
-						Reason string `json:"reason"`
-					} `json:"items"`
-				}
-				g.Expect(json.Unmarshal([]byte(eventOutput), &events)).To(Succeed())
-				g.Expect(events.Items).NotTo(BeEmpty(), "RevokedCertificate event not found for ClusterIssuer clusterissuer-with-revokecertificates")
-			}
-			Eventually(verifyRevokedEvent, 2*time.Minute, 5*time.Second).Should(Succeed())
+		// Horizon refuses to revoke a certificate twice. A certificate can be revoked before its
+		// request is deleted, for example by a holder policy when a newer certificate is issued.
+		// Deleting the request must not stay stuck on the issuer finalizer in that case.
+		It("lets a request go when its certificate was already revoked on Horizon", func() {
+			const (
+				issuerName      = "clusterissuer-with-revokecertificates"
+				certificateName = "certificate-already-revoked"
+				requestName     = certificateName + "-1"
+			)
 
+			By("issuing a certificate with an issuer that revokes certificates")
+			utils.ApplyManifest("test/assets/manifests/clusterissuer-with-revokecertificates.yml")
+			Eventually(utils.WaitForIssuerReady("clusterissuers.horizon.evertrust.io/"+issuerName, ""),
+				3*time.Minute, time.Second).Should(Succeed())
+			utils.ApplyManifest("test/assets/manifests/certificate-already-revoked.yml")
+			Eventually(utils.WaitForCertificateReady(certificateName), 3*time.Minute, time.Second).Should(Succeed())
+
+			finalizers, err := utils.CertificateRequestJSONPath(requestName, "{.metadata.finalizers}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(finalizers).To(ContainSubstring("horizon.evertrust.io/finalizer"))
+			certificateId, err := utils.CertificateRequestJSONPath(requestName,
+				"{.metadata.annotations.horizon\\.evertrust\\.io/certificate-id}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(certificateId).NotTo(BeEmpty())
+
+			By("revoking the certificate on Horizon before the request is deleted")
+			output, err := horizonAPI(http.MethodPost, "/api/v1/requests/submit",
+				fmt.Sprintf(`{"module":"webra","workflow":"revoke","certificateId":%q,"template":{}}`, certificateId))
+			Expect(err).NotTo(HaveOccurred(), "Failed to revoke certificate %s on Horizon: %s", certificateId, output)
+			output, err = horizonAPI(http.MethodPost, "/api/v1/certificates/find", fmt.Sprintf(`{"id":%q}`, certificateId))
+			Expect(err).NotTo(HaveOccurred(), "Failed to read certificate %s on Horizon: %s", certificateId, output)
+			Expect(output).To(ContainSubstring(`"revoked":true`), "the certificate should be revoked on Horizon")
+
+			By("deleting the request")
+			cmd := exec.Command("kubectl", "delete", "certificaterequests/"+requestName, "--wait=false")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("removing the finalizer instead of retrying the revocation")
+			Eventually(utils.WaitForCertificateRequestDeleted(requestName), 2*time.Minute, 5*time.Second).Should(Succeed())
+			Eventually(utils.WaitForClusterIssuerEvent(issuerName, "CertificateAlreadyRevoked"),
+				2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("cleaning up the certificate")
+			cmd = exec.Command("kubectl", "delete", "certificates/"+certificateName, "--ignore-not-found")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("can use an outbound proxy", func() {
