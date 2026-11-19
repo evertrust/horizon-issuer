@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/evertrust/horizon-issuer/compare/2.0.0...2.0.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **certificaterequest:** bug horizon issuer blocks certificaterequest ([#82](https://github.com/evertrust/horizon-issuer/issues/82)) ([570e1d8](https://github.com/evertrust/horizon-issuer/commit/570e1d8e409193296bc5538f0a2c476763ba426d))
+* **certificates:** implement syncLastCertificateId to manage parent Certificate ID updates ([#81](https://github.com/evertrust/horizon-issuer/issues/81)) ([37e04e9](https://github.com/evertrust/horizon-issuer/commit/37e04e977a9c903ded0e102f288c5252a3a573ab))
+
 ## [2.0.0](https://github.com/evertrust/horizon-issuer/compare/1.1.0...2.0.0) (2026-10-15)
 
 
