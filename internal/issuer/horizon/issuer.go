@@ -2,6 +2,7 @@ package horizon
 
 import (
 	"context"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"time"
@@ -277,19 +278,80 @@ func (r *HorizonIssuer) CancelRequest(ctx context.Context, certificateRequest *c
 	return nil
 }
 
-func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) error {
+// RevokeCertificate revokes the certificate issued for the request on Horizon.
+//
+// Horizon refuses to revoke a certificate twice, and a certificate can be revoked before its
+// request is deleted, for example by a holder policy when a newer certificate is issued. So when
+// the revocation fails, the certificate is looked up on Horizon by its PEM. If Horizon holds it
+// as revoked, there is nothing left to do and alreadyRevoked is true. In every other case the
+// revocation error is returned so that the deletion is retried.
+func (r *HorizonIssuer) RevokeCertificate(ctx context.Context, certificateRequest *cmapi.CertificateRequest) (alreadyRevoked bool, err error) {
 	logger := ctrl.LoggerFrom(ctx)
 
 	logger.Info(fmt.Sprintf("Sending revocation request for request %s", certificateRequest.UID))
 	certificatePem := string(certificateRequest.Status.Certificate)
-	_, _, err := r.Client.RequestAPI.RequestSubmit(ctx).
+	_, _, revokeErr := r.Client.RequestAPI.RequestSubmit(ctx).
 		RequestSubmitRequest(models.WebRARevokeRequestOnSubmitAsRequestSubmitRequest(&models.WebRARevokeRequestOnSubmit{
 			Workflow:       string(models.WORKFLOW_REVOKE),
 			CertificatePem: *utils.NewNullableString(&certificatePem),
 		})).
 		Execute()
+	if revokeErr == nil {
+		return false, nil
+	}
 
-	return err
+	failure := fmt.Errorf("%w: %w", errRevokeCertificate, &apiError{inner: revokeErr, msg: formatAPIError(revokeErr)})
+
+	revoked, lookupErr := r.certificateIsRevoked(ctx, certificateRequest.Status.Certificate)
+	if lookupErr != nil {
+		return false, fmt.Errorf("%w (could not check whether it is already revoked: %v)", failure, lookupErr)
+	}
+	if !revoked {
+		return false, failure
+	}
+
+	logger.Info(fmt.Sprintf("Certificate of request %s is already revoked on Horizon", certificateRequest.UID),
+		"revocationError", formatAPIError(revokeErr))
+	return true, nil
+}
+
+var errRevokeCertificate = errors.New("unable to revoke certificate on Horizon")
+
+// certificateIsRevoked looks the leaf certificate up on Horizon by its PEM and reports whether
+// Horizon holds it as revoked.
+func (r *HorizonIssuer) certificateIsRevoked(ctx context.Context, certificatePem []byte) (bool, error) {
+	leaf, err := leafCertificateDER(certificatePem)
+	if err != nil {
+		return false, fmt.Errorf("certificate of the request: %w", err)
+	}
+	leafPem := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leaf}))
+
+	found, _, err := r.Client.CertificateAPI.CertificateFind(ctx).
+		CertificateFindRequest(models.FindCertificateByPemAsCertificateFindRequest(models.NewFindCertificateByPem(leafPem))).
+		Execute()
+	if err != nil {
+		return false, errors.New(formatAPIError(err))
+	}
+	if found == nil {
+		return false, errors.New("no certificate returned by Horizon")
+	}
+
+	return found.Certificate.GetRevoked(), nil
+}
+
+// leafCertificateDER returns the first certificate of a PEM bundle. The request holds the leaf
+// first, followed by the rest of the chain when there is one.
+func leafCertificateDER(bundle []byte) ([]byte, error) {
+	for rest := bundle; ; {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return nil, errors.New("no PEM certificate found")
+		}
+		if block.Type == "CERTIFICATE" {
+			return block.Bytes, nil
+		}
+	}
 }
 
 func (r *HorizonIssuer) handlePendingRequest() (result ctrl.Result, err error) {
