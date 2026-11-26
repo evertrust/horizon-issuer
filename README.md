@@ -26,3 +26,9 @@ Then, list available targets:
 ```sh
 mise task ls
 ```
+
+## License
+
+Copyright 2025 EVERTRUST
+
+horizon-issuer is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text and [NOTICE](NOTICE) for attribution notices.

@@ -22,6 +22,7 @@ repository = "{{ env.REGISTRY_URL | default(value='harbor.infra.evertrust.io/pub
 tag = "{{ exec(command='git describe --tags --always') }}"
 image = "{{vars.repository}}:{{vars.tag}}"
 platforms = "linux/arm64,linux/amd64,linux/s390x"
+image_labels = "org.opencontainers.image.licenses=Apache-2.0"
 
 [tasks."lint:chart"]
 description = "Lint Helm chart"
@@ -71,7 +72,7 @@ run = "go build -o dist/horizon-issuer cmd/main.go"
 [tasks."build:docker"]
 description = "Build a single-arch container (horizon-issuer:dev)"
 depends = ["lint:fmt", "generate"]
-run = "KO_DOCKER_REPO=horizon-issuer ko build ./cmd --local --bare --tags dev"
+run = "KO_DOCKER_REPO=horizon-issuer ko build ./cmd --local --bare --tags dev --image-label {{vars.image_labels}}"
 
 [tasks."build:chart"]
 description = "Build the Helm chart"
@@ -127,7 +128,7 @@ run = [
 
 [tasks."publish:docker"]
 description = "Build and push a multi-arch container"
-run = "KO_DOCKER_REPO={{vars.repository}} ko build ./cmd --bare --tags {{vars.tag}} --platform=all"
+run = "KO_DOCKER_REPO={{vars.repository}} ko build ./cmd --bare --tags {{vars.tag}} --platform=all --image-label {{vars.image_labels}}"
 
 [tasks."publish:chart"]
 description = "Push the built chart"
