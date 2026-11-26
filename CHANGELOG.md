@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/evertrust/horizon-issuer/compare/2.0.1...2.0.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **deps:** bump golang.org/x/net to v0.62.0 and Go to 1.27.4 (INT-1034) ([ebf2264](https://github.com/evertrust/horizon-issuer/commit/ebf2264aee958520cd6cc1320765bd1d0f0200b8))
+
 ## [2.0.1](https://github.com/evertrust/horizon-issuer/compare/2.0.0...2.0.1) (2026-11-19)
 
 

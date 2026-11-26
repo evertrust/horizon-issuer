@@ -2,8 +2,8 @@ apiVersion: v2
 name: horizon-issuer
 description: Issue certificates seamlessly using Horizon and cert-manager.
 type: application
-version: 2.0.1
-appVersion: 2.0.1
+version: 2.0.2
+appVersion: 2.0.2
 sources:
   - https://github.com/evertrust/horizon-issuer
 annotations:
