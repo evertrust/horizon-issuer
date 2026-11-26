@@ -22,3 +22,6 @@ jobs:
         with:
           install-mode: none # golangci-lint is managed by Mise
           problem-matchers: true # required since we don't use actions/setup-go
+
+      - name: Check license headers in e2e tests
+        run: golangci-lint run --build-tags e2e --enable-only goheader ./...
